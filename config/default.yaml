@@ -1,0 +1,7 @@
+model:
+    backbone: 
+        type: "resnet50"
+    head:
+        type: "FDRHead"
+        num_grid_w: 9
+        num_grid_h: 9
