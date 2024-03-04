@@ -1,9 +1,16 @@
-model:
-    backbone: 
-        type: "resnet50"
-        out_channel: -1
-    head:
-        type: "FDRHead"
-        num_grid_w: 9
-        num_grid_h: 9
+backbone: 
+    type: "resnet50"
+head:
+    type: "FDRHead"
+        
+fourier_converter:
+    beta_train: 0.004
+    beta_test : 0.006
+
+target_width : 224
+target_height: 512
+grid_width   : 9
+grid_height  : 9
+
+
         

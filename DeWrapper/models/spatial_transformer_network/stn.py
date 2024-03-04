@@ -12,7 +12,7 @@ class STN(nn.Module):
         self.cfg = cfg
 
         self.backbone = backbone_builder(self.cfg)
-        self.cfg.model.backbone.out_channel = self.backbone.channels[-1]
+        self.cfg.backbone.out_channel = self.backbone.channels[-1]
         self.head = head_builder(self.cfg)
     
     def forward(self, x):
