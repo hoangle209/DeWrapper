@@ -94,11 +94,11 @@ class Bottleneck(nn.Module):
 
 
 resnet_spec = {
-    'resnet18' : (BasicBlock, [2, 2, 2, 2 ]),
-    'resnet34' : (BasicBlock, [3, 4, 6, 3 ]),
-    'resnet50' : (Bottleneck, [3, 4, 6, 3 ]),
-    'resnet101': (Bottleneck, [3, 4, 23, 3]),
-    'resnet152': (Bottleneck, [3, 8, 36, 3])
+    18 : (BasicBlock, [2, 2, 2, 2 ]),
+    34 : (BasicBlock, [3, 4, 6, 3 ]),
+    50 : (Bottleneck, [3, 4, 6, 3 ]),
+    101: (Bottleneck, [3, 4, 23, 3]),
+    152: (Bottleneck, [3, 8, 36, 3])
     }
 
 class Resnet(nn.Module):
