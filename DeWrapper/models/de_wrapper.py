@@ -34,6 +34,7 @@ class DeWrapper(LightningModule):
 
         self.coarse_transformer = STN(self.cfg)
         self.refine_transformer = STN(self.cfg)
+        
     
     def forward(self, x):
         pass
