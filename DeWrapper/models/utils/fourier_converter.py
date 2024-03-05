@@ -13,17 +13,18 @@ class FFT:
         else:
             self.beta = cfg.fourier_converter.beta_test
         
-        self.mask = np.ones(shape=(h, w))
+        self.mask = np.ones(shape=(h, w, 1))
 
-        masked_w = self.beta * w
-        masked_h = self.beta * h
-        cy, cx = h//2, w//2
+        masked_w = int(self.beta * w)
+        masked_h = int(self.beta * h)
+        cy, cx = int(h//2), int(w//2)
         self.mask[-masked_h + cy : masked_h + cy,
                   -masked_w + cx : masked_w + cx] = 0
 
     @staticmethod
     def fft(x):
-        x_ = cv2.dft(np.float32(x), flags=cv2.DFT_COMPLEX_OUTPUT)
+        x_ = cv2.dft(np.float32(x), flags=cv2.DFT_COMPLEX_OUTPUT) # TODO: check number channels of x
+                                                                  # x has to be in gray mode
         return x_
 
     @staticmethod

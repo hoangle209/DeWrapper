@@ -21,17 +21,19 @@ sys.path.insert(1, ".")
 # for param in t.parameters():
 #     print(param)
 
-from DeWrapper.models.spatial_transformer_network.stn import STN
 from omegaconf import DictConfig, OmegaConf
-
-from torch import nn
+import cv2
 import torch
+import numpy as np
 
 if __name__ == "__main__":
-    a = torch.Tensor([1])
-    a.requires_grad=True
-    b = torch.Tensor([1])
-
-    c = a+b
-    d = 2*c
-    print(d.requires_grad)
+    from DeWrapper.models.de_wrapper import DeWrapper
+    cfg = OmegaConf.load("config/default.yaml")
+    model = DeWrapper(cfg)
+    oimg = np.ones((224, 512, 3), dtype=np.uint8)
+    img = torch.ones(1, 3, 224, 224)
+    i = {
+        "origin_img": oimg,
+        "img": img
+    }
+    model(i)

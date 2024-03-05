@@ -46,8 +46,8 @@ class TPS:
         forward_kernel[-2:, :N].copy_(target_control_points.transpose(0, 1))
 
         # compute inverse matrix
-        inverse_kernel = torch.inverse(forward_kernel)
-        self.inverse_kernel = inverse_kernel.float().requires_grad = True
+        self.inverse_kernel = torch.inverse(forward_kernel)
+        self.inverse_kernel.float().requires_grad = True
         
         HW = w * h
         target_coordinate = list(itertools.product(range(h), range(w)))
@@ -73,16 +73,17 @@ class TPS:
         B, _, c = source_coordinate.size()
         w = self.cfg.target_width
         h = self.cfg.target_height
-        source_coord_ = source_coordinate.reshape(B, h, w, c).cpu().numpy()
+        source_coord_ = source_coordinate.clone().detach().cpu().numpy()
 
         source_coord_ = (source_coord_ + 1) * np.array([w, h]) / 2 # mapping to origin coordinate
-        source_coord_ = source_coord_[..., ::-1].astype(np.int32) # convert index from (w, h) -> (h, w) 
-        
-        mapX = mapY = np.zeros(shape=(B, h, w), dtype=np.int32)
-        mapX[source_coord_] = self.target_coordinate_origin[..., 0]
-        mapY[source_coord_] = self.target_coordinate_origin[..., 1]
+        index_ = (source_coord_[:, :, 0] + w * source_coord_[:, :, 1]).astype(np.int32)
 
-        return mapX, mapY
+        mapX = mapY = np.zeros(shape=(B, h*w), dtype=np.float32)
+        for i in range(B):
+            mapX[i, index_[i]] = self.target_coordinate_origin[..., 0].reshape(-1)
+            mapY[i, index_[i]] = self.target_coordinate_origin[..., 1].reshape(-1)
+
+        return mapX.reshape(B, h, w), mapY.reshape(B, h, w)
 
 
     def __call__(self, source_control_points):

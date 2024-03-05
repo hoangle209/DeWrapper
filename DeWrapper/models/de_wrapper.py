@@ -46,13 +46,23 @@ class DeWrapper(LightningModule):
     def forward(self, x):
         """
         """
+        X_origin = x["origin_img"]
+        x = x["img"]
         coarse_mesh = self.coarse_transformer(x)
         _, mapX_coarse_, mapY_coarse_ = self.TPS(coarse_mesh)
-        x_coarse = cv2.remap(x, mapX_coarse_, mapY_coarse_, cv2.INTER_AREA, cv2.BORDER_CONSTANT, (0,0,0))
+        x_coarse = cv2.remap(X_origin, 
+                             mapX_coarse_[0], mapY_coarse_[0], # TODO: handle mapping in batch
+                             cv2.INTER_AREA, 
+                             borderMode=cv2.BORDER_CONSTANT, 
+                             borderValue=0)
 
         refine_mesh = self.refine_transformer(x)
         _, mapX_refine_, mapY_refine_ = self.TPS(refine_mesh)
-        x_refine = cv2.remap(x_coarse, mapX_refine_, mapY_refine_, cv2.INTER_AREA, cv2.BORDER_CONSTANT, (0,0,0))
+        x_refine = cv2.remap(x_coarse, 
+                             mapX_refine_[0], mapY_refine_[0], # TODO: handle mapping in batch
+                             cv2.INTER_AREA, 
+                             borderMode=cv2.BORDER_CONSTANT, 
+                             borderValue=0)
 
         x_ = self.FFT.converter(x_refine)
 
