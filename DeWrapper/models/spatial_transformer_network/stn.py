@@ -1,4 +1,5 @@
 from torch import nn
+import torch.nn.functional as F
 
 from .backbones.builder import builder as backbone_builder
 from .heads.builder import builder as head_builder
@@ -17,6 +18,7 @@ class STN(nn.Module):
     
     def forward(self, x):
         x = self.head(self.backbone(x))
+        x = F.tanh(x)
         return x
 
 

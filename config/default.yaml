@@ -4,13 +4,15 @@ head:
     type: "FDRHead"
         
 fourier_converter:
-    beta_train: 0.004
-    beta_test : 0.006
+    beta_train: 0.06
+    beta_test : 0.008
 
 target_width : 224
 target_height: 512
 grid_width   : 9
 grid_height  : 9
+
+train: True
 
 
         
