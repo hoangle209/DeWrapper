@@ -96,6 +96,8 @@ class FourierConverter(nn.Module):
         x_denormalize = self.invNormalize(x) * 255. # (b, 1, h, w)
         x_fft = fft.fft2(x_denormalize) # (b, 1, h, w)
         x_fft_high_freq = x_fft * self.mask + self.blank_fft * (1. - self.mask)
+        
+        # shift the origin to the beginning of the vector (top-left in 2D case)
         x_ishift = fft.ifftshift(x_fft_high_freq)
         x_ifft = fft.ifft2(x_ishift)
 

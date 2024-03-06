@@ -1,7 +1,5 @@
 import torch
-
 import itertools
-import numpy as np
 
 # phi(x1, x2) = r^2 * log(r), where r = ||x1 - x2||_2
 def compute_partial_repr(input_points, control_points):

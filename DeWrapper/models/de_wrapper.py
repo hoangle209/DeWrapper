@@ -8,7 +8,7 @@ from kornia.geometry.transform import remap
 
 
 from DeWrapper.models import STN
-from DeWrapper.models.utils.fourier_converter import FFT, FourierConverter
+from DeWrapper.models.utils.fourier_converter import FourierConverter
 from DeWrapper.models.utils.thin_plate_spline import TPS
 from DeWrapper.utils import get_pylogger
 logger = get_pylogger()
@@ -37,8 +37,12 @@ class DeWrapper(LightningModule):
 
         self.best_val_acc = 0
 
+        logger.info("Creating Coarse Transformer")
         self.coarse_transformer = STN(self.cfg)
+
+        logger.info("Creating Refine Transformer")
         self.refine_transformer = STN(self.cfg)
+        
         self.FFT = FourierConverter(self.cfg)
         self.TPS = TPS(self.cfg)
 
