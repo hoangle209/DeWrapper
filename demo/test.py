@@ -39,3 +39,8 @@ if __name__ == "__main__":
         "img": img,        
     }
     model(img)
+
+    # dataloader = {
+    #     "img": preprocess(img),
+    #     "ref": gt_img
+    # }

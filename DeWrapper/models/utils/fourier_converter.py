@@ -87,13 +87,16 @@ class FourierConverter(nn.Module):
         self.mask[:, :, -masked_h + cy : masked_h + cy,
                         -masked_w + cx : masked_w + cx] = 0.0
     
-    def forward(self, x):
+    def forward(self, x, is_normalized=True):
         """
         Parameters:
         -----------
-            x, Tensor, (b, 3, h, w), normalized
+            x, Tensor, (b, 3, h, w)
+            is_normalized, bool, default=True
+                whether input Tensor is normalize
         """
-        x_denormalize = self.invNormalize(x) * 255. # (b, 1, h, w)
+        x_denormalize = self.invNormalize(x) * 255. if is_normalized \
+                        else x # (b, 1, h, w)
         x_fft = fft.fft2(x_denormalize) # (b, 1, h, w)
         x_fft_high_freq = x_fft * self.mask + self.blank_fft * (1. - self.mask)
         

@@ -1,5 +1,6 @@
 backbone: 
     type: "resnet50"
+
 head:
     type: "FDRHead"
         
@@ -16,4 +17,7 @@ grid_height  : 9
 
 train: True 
 
+trainer:
+    loss_type: "L1"
+    batch: 32
         

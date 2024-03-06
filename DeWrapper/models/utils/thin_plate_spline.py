@@ -78,7 +78,8 @@ class TPS(torch.nn.Module):
 
         # mapping to origin coordinate
         source_coord_ = (source_coord_ + 1) * torch.Tensor([w, h]) / 2 
-        # Flatten index =  idx_w + w * inx_h
+        
+        # Flatten index =  idx_w + w * idx_h
         index_ = (source_coord_[:, :, 0] + w * source_coord_[:, :, 1]).to(torch.int32) 
 
         mapX = mapY = torch.zeros(B, h*w)
