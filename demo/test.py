@@ -30,10 +30,12 @@ if __name__ == "__main__":
     from DeWrapper.models.de_wrapper import DeWrapper
     cfg = OmegaConf.load("config/default.yaml")
     model = DeWrapper(cfg)
-    oimg = np.ones((224, 512, 3), dtype=np.uint8)
+    oimg = torch.ones(1, 3, 224, 512)
+    gimg = np.ones((224, 512), dtype=np.uint8)
     img = torch.ones(1, 3, 224, 224)
     i = {
         "origin_img": oimg,
-        "img": img
+        "gray_img": gimg,
+        "img": img,        
     }
-    model(i)
+    model(img)

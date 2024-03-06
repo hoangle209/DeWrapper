@@ -4,11 +4,11 @@ from lightning import LightningModule
 from lightning.pytorch.utilities.rank_zero import rank_zero_only
 from omegaconf import DictConfig
 from torchmetrics import MeanMetric
+from kornia.geometry.transform import remap
 
-import cv2
 
 from DeWrapper.models import STN
-from DeWrapper.models.utils.fourier_converter import FFT
+from DeWrapper.models.utils.fourier_converter import FFT, FourierConverter
 from DeWrapper.models.utils.thin_plate_spline import TPS
 from DeWrapper.utils import get_pylogger
 logger = get_pylogger()
@@ -39,34 +39,39 @@ class DeWrapper(LightningModule):
 
         self.coarse_transformer = STN(self.cfg)
         self.refine_transformer = STN(self.cfg)
-        self.FFT = FFT(self.cfg)
+        self.FFT = FourierConverter(self.cfg)
         self.TPS = TPS(self.cfg)
 
         
     def forward(self, x):
+        """Forward function. Using for inference 
+        
+        Parameters:
+        -----------
+            x: Tensor, (b, 3, h, w)
+                normalized input image
         """
-        """
-        X_origin = x["origin_img"]
-        x = x["img"]
         coarse_mesh = self.coarse_transformer(x)
         _, mapX_coarse_, mapY_coarse_ = self.TPS(coarse_mesh)
-        x_coarse = cv2.remap(X_origin, 
-                             mapX_coarse_[0], mapY_coarse_[0], # TODO: handle mapping in batch
-                             cv2.INTER_AREA, 
-                             borderMode=cv2.BORDER_CONSTANT, 
-                             borderValue=0)
+        x_coarse = remap(x, 
+                         mapX_coarse_, mapY_coarse_,
+                         mode="bilinear", 
+                         padding_mode="zeros", 
+                         align_corners=True,
+                         normalized_coordinates=False) # whether the input coordinates are normalized in the range of [-1, 1].
 
-        refine_mesh = self.refine_transformer(x)
+        refine_mesh = self.refine_transformer(x_coarse)
         _, mapX_refine_, mapY_refine_ = self.TPS(refine_mesh)
-        x_refine = cv2.remap(x_coarse, 
-                             mapX_refine_[0], mapY_refine_[0], # TODO: handle mapping in batch
-                             cv2.INTER_AREA, 
-                             borderMode=cv2.BORDER_CONSTANT, 
-                             borderValue=0)
+        x_refine = remap(x_coarse, 
+                         mapX_refine_, mapY_refine_,
+                         mode="bilinear", 
+                         padding_mode="zeros", 
+                         align_corners=True,
+                         normalized_coordinates=False)
 
-        x_ = self.FFT.converter(x_refine)
+        x_fft_converted = self.FFT(x_refine) # Denoising for friendly OCR
 
-        return x_, x_refine
+        return x_fft_converted, x_refine
 
 
     def loss(self):

@@ -19,10 +19,12 @@ def compute_partial_repr(input_points, control_points):
     return repr_matrix
 
 
-class TPS:
+class TPS(torch.nn.Module):
     """Thin-plate Spline
     """
     def __init__(self, cfg) -> None:
+        super().__init__()
+
         self.cfg = cfg
 
         w = cfg.target_width
@@ -32,9 +34,8 @@ class TPS:
 
         x_ = torch.arange(0, w + 1e-5, w / (grid_w - 1)) * 2 / (w - 1) - 1
         y_ = torch.arange(0, h + 1e-5, h / (grid_h - 1)) * 2 / (h - 1) - 1
-        Y, X = torch.meshgrid(y_, x_)
+        Y, X = torch.meshgrid(y_, x_, indexing='ij')
         target_control_points = torch.cat([X.reshape(-1, 1), Y.reshape(-1, 1)], dim=1) # (N, 2)
-        # target_control_points.float().requires_grad = True # to float32 to set require_grad=True
 
         N = target_control_points.size(0)
         forward_kernel = torch.zeros(N + 3, N + 3)
@@ -53,7 +54,9 @@ class TPS:
         target_coordinate = list(itertools.product(range(h), range(w)))
         target_coordinate = torch.Tensor(target_coordinate) # HW x 2
         Y, X = target_coordinate.split(1, dim = 1)
-        self.target_coordinate_origin = torch.cat([X, Y], dim=1).cpu().numpy() # storing origin target coordinate to use in get_remap function
+
+        # storing origin target coordinate to use in get_remap function
+        self.target_coordinate_origin = torch.cat([X, Y], dim=1) 
 
         # convert coordinate to range(-1, 1)
         Y = Y * 2 / (h - 1) - 1
@@ -70,24 +73,26 @@ class TPS:
     
     
     def get_remap_(self, source_coordinate):
-        B, _, c = source_coordinate.size()
+        B, _, _ = source_coordinate.size()
         w = self.cfg.target_width
         h = self.cfg.target_height
-        source_coord_ = source_coordinate.clone().detach().cpu().numpy()
+        source_coord_ = source_coordinate.clone()
 
-        source_coord_ = (source_coord_ + 1) * np.array([w, h]) / 2 # mapping to origin coordinate
-        index_ = (source_coord_[:, :, 0] + w * source_coord_[:, :, 1]).astype(np.int32)
+        # mapping to origin coordinate
+        source_coord_ = (source_coord_ + 1) * torch.Tensor([w, h]) / 2 
+        # Flatten index =  idx_w + w * inx_h
+        index_ = (source_coord_[:, :, 0] + w * source_coord_[:, :, 1]).to(torch.int32) 
 
-        mapX = mapY = np.zeros(shape=(B, h*w), dtype=np.float32)
+        mapX = mapY = torch.zeros(B, h*w)
         for i in range(B):
-            mapX[i, index_[i]] = self.target_coordinate_origin[..., 0].reshape(-1)
-            mapY[i, index_[i]] = self.target_coordinate_origin[..., 1].reshape(-1)
+            mapX[i, index_[i]] = self.target_coordinate_origin[..., 0].view(-1)
+            mapY[i, index_[i]] = self.target_coordinate_origin[..., 1].view(-1)
 
         return mapX.reshape(B, h, w), mapY.reshape(B, h, w)
 
 
-    def __call__(self, source_control_points):
-        B, num_points, _ = source_control_points.size()
+    def forward(self, source_control_points):
+        B, N, _ = source_control_points.size()
         Y = torch.cat([source_control_points, self.padding_matrix.expand(B, 3, 2)], dim=1)
         mapping_matrix = torch.matmul(self.inverse_kernel, Y)
         source_coordinate = torch.matmul(self.target_coordinate_repr, mapping_matrix)
