@@ -4,13 +4,13 @@ from lightning import LightningModule
 from lightning.pytorch.utilities.rank_zero import rank_zero_only
 from lightning.pytorch.callbacks import Timer
 from torchmetrics import MeanMetric
-from kornia.geometry.transform import remap
+from kornia.geometry.transform import remap, warp_image_tps
 
 import numpy as np
 
 from DeWrapper.models import STN
 from DeWrapper.models.utils.fourier_converter import FourierConverter
-from DeWrapper.models.utils.thin_plate_spline import TPS
+from DeWrapper.models.utils.thin_plate_spline import KorniaTPS
 
 from DeWrapper.utils import get_pylogger
 logger = get_pylogger()
@@ -52,12 +52,54 @@ class DeWrapper(LightningModule):
         logger.info("Creating Refine Transformer...")
         self.refine_transformer = STN(self.cfg)
 
-        self.FFT = FourierConverter(self.cfg)
-        self.TPS = TPS(self.cfg)
+        self.fourier_converter = FourierConverter(self.cfg)
+        self.kornia_tps = KorniaTPS(self.cfg)
+
+        # self.tps = TPS(self.cfg)
+        # if self.cfg.loss.mutual.enable:
+        #     self.kornia_tps = KorniaTPS(self.cfg)
 
         # Losses
         self.configure_crit()
  
+
+    # def forward_(self, x):
+    #     """Forward function. Using for inference 
+        
+    #     Parameters:
+    #     -----------
+    #         x: Tensor, (b, 3, h, w)
+    #             normalized input image
+    #     """
+    #     coarse_mesh = self.coarse_transformer(x)
+    #     _, mapX_coarse_, mapY_coarse_ = self.tps(coarse_mesh)
+    #     x_coarse = remap(x, 
+    #                      mapX_coarse_, mapY_coarse_,
+    #                      mode="bilinear", 
+    #                      padding_mode="zeros", 
+    #                      align_corners=True,
+    #                      normalized_coordinates=False) # whether the input coordinates are normalized in the range of [-1, 1].
+
+    #     refine_mesh = self.refine_transformer(x_coarse)
+    #     _, mapX_refine_, mapY_refine_ = self.tps(refine_mesh)
+    #     x_refine = remap(x_coarse, 
+    #                      mapX_refine_, mapY_refine_,
+    #                      mode="bilinear", 
+    #                      padding_mode="zeros", 
+    #                      align_corners=True,
+    #                      normalized_coordinates=False)
+
+    #     x_fft_converted = self.fourier_converter(x_refine) # Denoising for friendly OCR
+
+    #     output = {
+    #         "x_converted": x_fft_converted, 
+    #         "x_refine"   : x_refine,
+    #         "coarse_map" : (mapX_coarse_, mapY_coarse_),
+    #         "refine_map" : (mapX_refine_, mapY_refine_)
+    #     }
+    #     return output
+    
+
     def forward(self, x):
         """Forward function. Using for inference 
         
@@ -67,60 +109,135 @@ class DeWrapper(LightningModule):
                 normalized input image
         """
         coarse_mesh = self.coarse_transformer(x)
-        _, mapX_coarse_, mapY_coarse_ = self.TPS(coarse_mesh)
-        x_coarse = remap(x, 
-                         mapX_coarse_, mapY_coarse_,
-                         mode="bilinear", 
-                         padding_mode="zeros", 
-                         align_corners=True,
-                         normalized_coordinates=False) # whether the input coordinates are normalized in the range of [-1, 1].
-
+        coarse_kernel_weight_, coarse_affine_weights_ = self.kornia_tps(coarse_mesh)
+        x_coarse = warp_image_tps(x, 
+                                  coarse_mesh,
+                                  coarse_kernel_weight_,
+                                  coarse_affine_weights_)
+        
         refine_mesh = self.refine_transformer(x_coarse)
-        _, mapX_refine_, mapY_refine_ = self.TPS(refine_mesh)
-        x_refine = remap(x_coarse, 
-                         mapX_refine_, mapY_refine_,
-                         mode="bilinear", 
-                         padding_mode="zeros", 
-                         align_corners=True,
-                         normalized_coordinates=False)
+        refine_kernel_weight_, refine_affine_weights_ = self.kornia_tps(refine_mesh)
+        x_refine = warp_image_tps(x_coarse, 
+                                  refine_mesh,
+                                  refine_kernel_weight_,
+                                  refine_affine_weights_)
+        
+        x_fft_converted = self.fourier_converter(x_refine) # Denoising for friendly OCR
+        
+        output = {
+            "x_converted": x_fft_converted, 
+            "x_refine"   : x_refine,
+            "coarse_mesh": coarse_mesh,
+            "coarse_map" : (coarse_kernel_weight_, coarse_affine_weights_),
+            "refine_mesh": refine_mesh,
+            "refine_map" : (refine_kernel_weight_, refine_affine_weights_),
+        }
+        return output
 
-        x_fft_converted = self.FFT(x_refine) # Denoising for friendly OCR
-        return x_fft_converted, x_refine
 
     def configure_crit(self):
-        loss_type = self.cfg.train.loss_type
+        loss_type = {
+            "L1"       : F.l1_loss,
+            "L2"       : F.mse_loss,
+            "smooth_L1": F.smooth_l1_loss
+        }
         
-        if loss_type == "L1":
-            self.crit = F.l1_loss
-        elif loss_type == "smooth_L1":
-            self.crit = F.smooth_l1_loss
-        elif loss_type == "L2":
-            self.crit = F.mse_loss
+        # Coarse loss
+        crit_coarse = self.cfg.trainer.loss.coarse
+        if crit_coarse in loss_type:
+            self.crit_coarse = loss_type[crit_coarse]
         else:
-            logger.warning(f"{loss_type} is not implemented. 
-                           Using L1 loss as default...")
-            self.crit = F.l1_loss
+            logger.warning(f"Coarse loss type {crit_coarse} is not implemented.\
+                            Using L1 loss as default...")
+            self.crit_coarse = loss_type["L1"]
+
+        # Refinement loss
+        crit_refine = self.cfg.trainer.loss.coarse
+        if crit_refine in loss_type:
+            self.crit_refine = loss_type[crit_refine]
+        else:
+            logger.warning(f"Refinement loss type {crit_refine} is not implemented.\
+                            Using L1 loss as default...")
+            self.crit_refine = loss_type["L1"]
+
+        # Mutual loss
+        if self.cfg.trainer.loss.mutual.enable:
+            """Document with two different geometric distortions can be 
+            mutually transformed to each other if their mesh grids are predicted correctly.
+            """
+            crit_mutual = self.cfg.trainer.loss.mutual.type
+            if crit_mutual in loss_type:
+                self.crit_mutual = loss_type[crit_mutual]
+            else:
+                logger.warning(f"Refinement loss type {crit_mutual} is not implemented.\
+                                Using L1 loss as default...")
+                self.crit_mutual = loss_type["L1"]
+
 
     def on_train_start(self):
         torch.cuda.empty_cache()
     
+
     def step(self, batch):
         img = batch["img"]
         ref = batch["ref"] # ground-truth
-        x_fft_converted, _ = self.forward(img)
-        ref_ = self.FFT(ref)
 
-        loss = self.crit(x_fft_converted, ref_)
-        return loss
+        # Fourier Converter
+        x_ = self.fourier_converter(img)
+        ref_ = self.fourier_converter(ref, is_normalized=False)
+
+        out = self.forward(img)
+        coarse_mesh = out["coarse_mesh"]
+        coarse_kernel_weight_, coarse_affine_weights_ = out["coarse_map"]
+        refine_mesh = out["refine_mesh"]
+        refine_kernel_weight_, refine_affine_weights_= out["refine_map"] 
+
+        x_fft_coarse_ = warp_image_tps(x_, 
+                                       coarse_mesh,
+                                       coarse_kernel_weight_,
+                                       coarse_affine_weights_)
+        x_fft_refine_ = warp_image_tps(x_fft_coarse_, 
+                                       refine_mesh,
+                                       refine_kernel_weight_,
+                                       refine_affine_weights_)
+        loss_coarse = self.crit(x_fft_coarse_, ref_)
+        loss_refine = self.crit(x_fft_refine_, ref_)
+
+        if self.cfg.trainer.loss.mutual.enable:
+            D1 = batch["deform1"]
+            D2 = batch["deform2"]
+
+            d1_mesh = self.coarse_transformer(D1)
+            d2_mesh = self.coarse_transformer(D2)
+            kernel_weight_1, affine_weights_1 = self.kornia_tps(d1_mesh, d2_mesh) # d1 to d2
+            kernel_weight_2, affine_weights_2 = self.kornia_tps(d2_mesh, d1_mesh) # d2 to d1
+
+            wrapedD2 = warp_image_tps(D1, d1_mesh, kernel_weight_1, affine_weights_1)
+            wrapedD1 = warp_image_tps(D2, d2_mesh, kernel_weight_2, affine_weights_2)
+
+            loss_mutual = self.crit_mutual(wrapedD1, D1) + self.crit_mutual(wrapedD2, D2)
+            w = self.self.cfg.trainer.loss.mutual.weight
+            loss_coarse += w * loss_mutual
+        
+        loss_ = loss_coarse + loss_refine
+
+        return {
+            "coarse": loss_coarse,
+            "refine": loss_refine,
+            "total"  : loss_
+        }
+
 
     def training_step(self, batch, batch_idx):
         loss = self.step(batch)
-        self.train_loss(loss.item())
-        self.log("train/loss", loss.item(), on_step=False, on_epoch=True, prog_bar=True)
+        self.train_loss(loss["total"].item())
+        for key in loss.keys():
+            self.log("train/loss/" + key, loss[key].item(), on_step=False, on_epoch=True, prog_bar=True)
         self.log_iter_stats(batch_idx)
 
         del batch
         return loss
+
 
     def log_iter_stats(self, cur_iter): # TODO
         def gpu_mem_usage():
