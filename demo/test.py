@@ -32,7 +32,7 @@ if __name__ == "__main__":
     model = DeWrapper(cfg)
     oimg = torch.ones(1, 3, 224, 512)
     gimg = np.ones((224, 512), dtype=np.uint8)
-    img = torch.ones(1, 3, 224, 224)
+    img = torch.ones(1, 3, 512, 224)
     i = {
         "origin_img": oimg,
         "gray_img": gimg,
