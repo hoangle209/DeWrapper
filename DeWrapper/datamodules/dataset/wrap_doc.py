@@ -2,11 +2,13 @@ import os
 import numpy as np
 import torch
 import torchvision.transforms as T
+import torrchvison.transforms.v2 as T_v2
 from PIL import Image
 from torch.utils.data import Dataset
 import glob
 
-from ..augmentation import RandAugment
+from ..augmentation import SpatialRandAug, ColorRandAug, ClassifyLetterBox
+from DeWrapper.utils import make_divisible
 from DeWrapper.utils import get_pylogger
 logger = get_pylogger(__name__)
 
@@ -30,12 +32,15 @@ class WrapDocDataset(Dataset):
         self.cfg = cfg
         self.train = train
 
-        datapath = self.cfg.dataset.path
+        datapath = self.cfg.paths.data_dir
         self.img_list = glob.glob(f"{datapath}/image/**/*.jpg", recursive=True)
         self.label_list = glob.glob(f"{datapath}/digital/**/*.jpg", recursive=True)
         self.margin_label_list = glob.glob(f"{datapath}/digital_margin/**/*.jpg", recursive=True)
 
-        self.aug = self.augment()
+        self.target_w = self.cfg.target_width
+        self.target_h = self.cfg.target_height
+
+        self.configure_aug()
     
     def __len__(self):
         return len(self.img_list)
@@ -52,48 +57,88 @@ class WrapDocDataset(Dataset):
         ref = pil_loader(ref_path)
         margin_ref = pil_loader(margin_ref_path)
 
-        img = self.aug(img)
+        input = self.apply_aug_(img, ref)
+        return input
+
+    def configure_aug(self):
+        aug = []
+        colored_aug = []
+        ref_aug = []
+
+        # Resize
+        if self.cfg.dataset.random_resize:
+            min_ = make_divisible(self.target_w*0.75, 32)
+            max_ = self.target_w
+            aug += [
+                T_v2.RandomResize(min_, max_),
+                ClassifyLetterBox(size=(self.target_h, self.target_w)), 
+                T.ToPILImage()
+                ]
+        else:
+            aug += [T.Resize((self.target_h, self.target_w))]
+
+        # Affine and Color transform
+        if self.train and self.cfg.dataset.rand_aug is not None:
+            if self.cfg.dataset.rand_aug == "randaugment":
+                aug += [SpatialRandAug()]
+                colored_aug += [ColorRandAug()]
+            elif self.cfg.dataset.rand_aug == "autoaugment":
+                colored_aug += [T.AutoAugment()]
+            else:
+                logger.warning(f"Augment type {self.cfg.dataset.rand_aug} is not implemented")
         
-        return {
-            "img": img,
-            "ref": ref
+        # To tensor and Normalize
+        aug += [
+            T.ToTensor(),
+            T.Normalize(
+                mean=[0.485, 0.456, 0.406], 
+                std =[0.229, 0.224, 0.225]
+            )]
+        colored_aug += [
+            T.ToTensor(),
+            T.Normalize(
+                mean=[0.485, 0.456, 0.406], 
+                std =[0.229, 0.224, 0.225]
+            )]
+        ref_aug += [
+            T.Resize((self.target_h, self.target_w)),
+            T.ToTensor(),
+            T.Normalize(
+                mean=[0.485, 0.456, 0.406], 
+                std =[0.229, 0.224, 0.225]
+            )]
+        
+        # Random Blur
+        if torch.rand() < self.cfg.dataset.blur:
+            colored_aug += [T.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5.))]
+
+        # Random erasing
+        if self.cfg.dataset.erasing > 0:
+            colored_aug += [
+                T.RandomErasing(p=self.cfg.dataset.erasing, inplace=True)
+            ]
+
+        self.aug = {
+            "nor"    : T.Compsoe(aug),
+            "colored": T.Compose(colored_aug),
+            "ref"    : T.Compose(ref_aug)
         }
 
-    def augment(self):
-        min_ = min(self.cfg.target_height, self.cfg.target_width)
-        max_ = max(self.cfg.target_height, self.cfg.target_width)
-        t = [T.v2.RandomResize(min_, max_)]
-        
-        rand_aug = self.cfg.dataset.rand_aug
-        if self.train and rand_aug is not None:
-            if rand_aug == "randaugment":
-                t += [T.RandAugment()]
-            elif rand_aug == "autoaugment":
-                t += [T.AutoAugment()]
-            else:
-                logger.warning(f"Augment type {rand_aug} is not implemented")
+    def apply_aug_(self, img, ref, margin_ref=None):
+        img_ = self.aug["nor"](img)
+        ref = self.aug["ref"](ref)
+        colored = self.aug["colored"](img_)
+        deform1 = self.aug["nor"](img)
+        deform2 = self.aug["nor"](img)
 
-        t += [
-            T.ToTensor(),
-            T.Normalize(
-                mean=[0.485, 0.456, 0.406], 
-                std =[0.229, 0.224, 0.225]
-            ),
-            T.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5.))
-        ]
-        return T.Compose(t)
+        return {
+            "img"    : img_,
+            "ref"    : ref,
+            "colored": colored,
+            "deform1": deform1,
+            "deform2": deform2
+        } 
     
-    def deform_aug(self):
-        t = [
-            T.Resize((self.cfg.target_height, self.cfg.target_width)),
-            T.AutoAugment(T.AutoAugmentPolicy.CIFAR10),
-            T.ToTensor(),
-            T.Normalize(
-                mean=[0.485, 0.456, 0.406], 
-                std =[0.229, 0.224, 0.225]
-            )
-        ]
-
 
 
 

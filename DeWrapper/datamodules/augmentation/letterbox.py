@@ -33,7 +33,7 @@ class ClassifyLetterBox:
         Resizes the image and pads it with a letterbox method.
 
         Args:
-            im (numpy.ndarray): The input image as a numpy array of shape HWC.
+            im (numpy.ndarray | PIL.Image): The input image as a numpy array of shape HWC.
 
         Returns:
             (numpy.ndarray): The letterboxed and resized image as a numpy array.

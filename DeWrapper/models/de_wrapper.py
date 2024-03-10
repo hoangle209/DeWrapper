@@ -145,7 +145,7 @@ class DeWrapper(LightningModule):
         }
         
         # Coarse loss
-        crit_coarse = self.cfg.trainer.loss.coarse
+        crit_coarse = self.cfg.loss.coarse
         if crit_coarse in loss_type:
             self.crit_coarse = loss_type[crit_coarse]
         else:
@@ -154,7 +154,7 @@ class DeWrapper(LightningModule):
             self.crit_coarse = loss_type["L1"]
 
         # Refinement loss
-        crit_refine = self.cfg.trainer.loss.coarse
+        crit_refine = self.cfg.loss.coarse
         if crit_refine in loss_type:
             self.crit_refine = loss_type[crit_refine]
         else:
@@ -163,11 +163,11 @@ class DeWrapper(LightningModule):
             self.crit_refine = loss_type["L1"]
 
         # Mutual loss
-        if self.cfg.trainer.loss.mutual.enable:
+        if self.cfg.loss.mutual.enable:
             """Document with two different geometric distortions can be 
             mutually transformed to each other if their mesh grids are predicted correctly.
             """
-            crit_mutual = self.cfg.trainer.loss.mutual.type
+            crit_mutual = self.cfg.loss.mutual.type
             if crit_mutual in loss_type:
                 self.crit_mutual = loss_type[crit_mutual]
             else:
@@ -178,17 +178,19 @@ class DeWrapper(LightningModule):
 
     def on_train_start(self):
         torch.cuda.empty_cache()
+        # TODO: save first batch as exmaple
     
 
     def step(self, batch):
         img = batch["img"]
         ref = batch["ref"] # ground-truth
+        colored = batch["colored"]
 
         # Fourier Converter
         x_ = self.fourier_converter(img)
         ref_ = self.fourier_converter(ref, is_normalized=False)
 
-        out = self.forward(img)
+        out = self.forward(colored)
         coarse_mesh = out["coarse_mesh"]
         coarse_kernel_weight_, coarse_affine_weights_ = out["coarse_map"]
         refine_mesh = out["refine_mesh"]
@@ -205,7 +207,7 @@ class DeWrapper(LightningModule):
         loss_coarse = self.crit(x_fft_coarse_, ref_)
         loss_refine = self.crit(x_fft_refine_, ref_)
 
-        if self.cfg.trainer.loss.mutual.enable:
+        if self.cfg.loss.mutual.enable:
             D1 = batch["deform1"]
             D2 = batch["deform2"]
 
@@ -218,7 +220,7 @@ class DeWrapper(LightningModule):
             wrapedD1 = warp_image_tps(D2, d2_mesh, kernel_weight_2, affine_weights_2)
 
             loss_mutual = self.crit_mutual(wrapedD1, D1) + self.crit_mutual(wrapedD2, D2)
-            w = self.self.cfg.trainer.loss.mutual.weight
+            w = self.self.cfg.loss.mutual.weight
             loss_coarse += w * loss_mutual
         
         loss_ = loss_coarse + loss_refine
@@ -247,7 +249,7 @@ class DeWrapper(LightningModule):
             mem_usage_bytes = torch.cuda.max_memory_allocated()
             return mem_usage_bytes / 1024 / 1024
         
-        if(cur_iter%self.cfg.log_frequency != 0):
+        if(cur_iter%self.cfg.trainer.log_frequency != 0):
             return 0
         
         mem_usage = gpu_mem_usage()
@@ -271,3 +273,56 @@ class DeWrapper(LightningModule):
         self.val_loss.reset()
         
         logger.info(stats)
+    
+
+    def configure_optimizers(self):
+        """Choose what optimizers and learning-rate schedulers to use in your optimization.
+        Normally you'd need one. But in the case of GANs or similar you might have multiple.
+
+        Examples:
+            https://pytorch-lightning.readthedocs.io/en/latest/common/lightning_module.html#configure-optimizers
+        """
+
+        # linear learning rate scaling for multi-gpu
+        if(self.trainer.num_devices * self.trainer.num_nodes>1 and self.cfg.solver.apply_linear_scaling):
+            self.lr_scaler = self.trainer.num_devices * self.trainer.num_nodes * self.trainer.accumulate_grad_batches * self.cfg.dataloader.batch / 256
+        else:
+            self.lr_scaler = 1
+        logger.info("num_devices: {}, num_nodes: {}, accumulate_grad_batches: {}, train_batch: {}".format(self.trainer.num_devices, self.trainer.num_nodes, self.trainer.accumulate_grad_batches, self.cfg.dataloader.batch))
+        logger.info("Linear LR scaling factor: {}".format(self.lr_scaler))
+        
+        if(self.cfg.solver.layer_decay is not None):
+            optim_params = self.get_param_groups()
+        else:
+            optim_params = [{'params': filter(lambda p: p.requires_grad, self.parameters()), 'lr': self.cfg.solver.lr * self.lr_scaler}]
+        
+        if(self.cfg.solver.name=="AdamW"):
+            optimizer = torch.optim.AdamW(params=optim_params, weight_decay=self.cfg.solver.weight_decay, betas=(0.9, 0.95))
+        elif(self.cfg.solver.name=="lion"):
+            from lion_pytorch import Lion
+            optimizer = Lion(params=optim_params, weight_decay=self.cfg.solver.weight_decay, betas=(0.9, 0.99))
+        elif(self.cfg.solver.name=="SGD"):
+            optimizer = torch.optim.SGD(params=optim_params, momentum=self.cfg.solver.momentum, weight_decay=self.cfg.solver.weight_decay)
+        else:
+            raise NotImplementedError("Unknown solver : " + self.cfg.solver.name)
+
+        def warm_start_and_cosine_annealing(epoch):
+            if epoch < self.cfg.solver.warmup_epochs:
+                lr = (epoch+1) / self.cfg.solver.warmup_epochs
+            else:
+                lr = 0.5 * (1. + math.cos(math.pi * ((epoch+1) - self.cfg.solver.warmup_epochs) / (self.trainer.max_epochs - self.cfg.solver.warmup_epochs )))
+            return lr
+
+        if(self.cfg.solver.scheduler == "cosine"):
+            scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=[warm_start_and_cosine_annealing for _ in range(len(optim_params))], verbose=False)
+        else:
+            scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, self.cfg.solver.decay_steps, gamma=self.cfg.solver.decay_gamma, verbose=False)
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "interval" : "epoch",
+                'frequency': 1,
+            }
+        }
