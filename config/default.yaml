@@ -32,4 +32,5 @@ trainer:
 dataset:
     path: ""
     erasing: 0.4 # (float) probability of random erasing during classification training (0-1)
+    auto_augment: "randaugment"
         

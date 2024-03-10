@@ -121,8 +121,10 @@ class DeWrapper(LightningModule):
                                   refine_mesh,
                                   refine_kernel_weight_,
                                   refine_affine_weights_)
-        
-        x_fft_converted = self.fourier_converter(x_refine) # Denoising for friendly OCR
+        if self.training:
+            x_fft_converted = None
+        else: # calculate fourier in eval mode only
+            x_fft_converted = self.fourier_converter(x_refine) # Denoising for friendly OCR
         
         output = {
             "x_converted": x_fft_converted, 

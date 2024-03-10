@@ -39,7 +39,8 @@ if __name__ == "__main__":
         "img": img,        
     }
     model(img)
-
+    model.eval()
+    print(model.training)
     # dataloader = {
     #     "img": preprocess(img),
     #     "ref": gt_img
