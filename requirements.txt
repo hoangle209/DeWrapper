@@ -1,0 +1,9 @@
+lightning
+opencv-contrib-python
+pillow
+kornia
+pyrootutils
+rich
+omegaconf
+submitit
+tensorboard

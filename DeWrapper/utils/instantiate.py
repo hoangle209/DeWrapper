@@ -1,4 +1,4 @@
-from omegacof import OmegaConf, DictConfig
+from omegaconf import OmegaConf, DictConfig
 from typing import List
 from lightning import Callback
 from lightning.pytorch.loggers import Logger

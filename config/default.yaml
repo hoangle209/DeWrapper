@@ -55,7 +55,7 @@ trainer:
     limit_train_batches: 1.0
     limit_val_batches: 1.0
     sync_batchnorm: null
-    strategy: null 
+    strategy: ddp_find_unused_parameters_true 
 
 loss: 
     coarse: "L1"

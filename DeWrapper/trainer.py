@@ -1,3 +1,6 @@
+import sys
+sys.path.insert(1, ".")
+
 import os
 from typing import List, Optional, Tuple
 
@@ -59,7 +62,7 @@ def train(cfg: DictConfig):
     logger.info("Instantiating loggers...")
     tensornboard_log: List[Logger] = instantiate_loggers(cfg.get("logger"))
 
-    logger.info(f"Instantiating trainer <{Trainer.__name__}>")
+    logger.info(f"Instantiating trainer <{Trainer.__qualname__}>")
     cfg_trainer = OmegaConf.to_object(cfg.trainer)
     trainer: Trainer = Trainer(callbacks=callbacks, logger=tensornboard_log, **cfg_trainer)
     
@@ -82,9 +85,9 @@ def train(cfg: DictConfig):
         else:
             logger.info("Loading weights from ckpt " + checkpoint_path)
 
-    if cfg.get("train"):
-        logger.info("Starting training !!!")
-        trainer.fit(model=model, datamodule=datamodule, ckpt_path=checkpoint_path) 
+    # if cfg.get("train"):
+    #     logger.info("Starting training !!!")
+    #     trainer.fit(model=model, datamodule=datamodule, ckpt_path=checkpoint_path) 
 
 if __name__ == "__main__":
     config = OmegaConf.load("config/default.yaml")
