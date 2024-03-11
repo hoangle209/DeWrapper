@@ -5,6 +5,7 @@ from lightning.pytorch.utilities.rank_zero import rank_zero_only
 from lightning.pytorch.callbacks import Timer
 from torchmetrics import MeanMetric
 from kornia.geometry.transform import remap, warp_image_tps
+import math
 
 import numpy as np
 
@@ -178,7 +179,11 @@ class DeWrapper(LightningModule):
 
     def on_train_start(self):
         torch.cuda.empty_cache()
-        # TODO: save first batch as exmaple
+        if self.cfg.debug:
+            self.trainer.datamodule.data_train.__getitem__(0)
+    
+    def on_train_epoch_end(self):
+        logger.info("\n " + self.cfg.paths.output_dir +  " : Training epoch " + str(self.current_epoch) + " ended.")
     
 
     def step(self, batch):
@@ -240,8 +245,24 @@ class DeWrapper(LightningModule):
         self.log_iter_stats(batch_idx)
 
         del batch
-        return loss
+        return loss["total"]
 
+    def on_validation_start(self):
+        torch.cuda.empty_cache()
+        if(self.cfg.debug): 
+            self.trainer.datamodule.data_val.__getitem__(0)
+    
+    def validation_step(self, batch, batch_idx):
+        loss = self.step(batch)
+        self.train_loss(loss["total"].item())
+        
+        
+        # if(self.cfg.compute_map and "ava" in self.cfg.action_space): 
+        #     self.evaluator_ava.store_results_batch(input_data, output_data, meta_data, smpl_output, video_name, slowfast_paths, output=copy.deepcopy(output[:, self.cfg.max_people:, :]))
+
+        # update and log metrics
+        for key in loss.keys():
+            self.log("val/loss/" + key, loss[key].item(), on_step=False, on_epoch=True, prog_bar=True)
 
     def log_iter_stats(self, cur_iter): # TODO
         def gpu_mem_usage():

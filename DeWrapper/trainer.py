@@ -11,6 +11,8 @@ from omegaconf import OmegaConf, DictConfig
 
 from DeWrapper.models import DeWrapper
 from DeWrapper.datamodules.datamodule import WrapDocDatamodule
+from DeWrapper.utils.instantiate import instantiate_callbacks, instantiate_loggers
+from DeWrapper.utils.ema_checkpoints import EMACheckpoint
 from DeWrapper.utils import get_pylogger
 logger = get_pylogger(__name__)
 
@@ -51,19 +53,38 @@ def train(cfg: DictConfig):
     logger.info(f"Instantiating model <{DeWrapper.__name__}>")
     model = DeWrapper(cfg)
 
-    # logger.info("Instantiating callbacks...")
-    # callbacks: List[Callback] = utils.instantiate_callbacks(cfg.get("callbacks"))
+    logger.info("Instantiating callbacks...")
+    callbacks: List[Callback] = instantiate_callbacks(cfg.get("callbacks"))
 
-    # logger.info("Instantiating loggers...")
-    # logger: List[Logger] = utils.instantiate_loggers(cfg.get("logger"))
+    logger.info("Instantiating loggers...")
+    tensornboard_log: List[Logger] = instantiate_loggers(cfg.get("logger"))
 
     logger.info(f"Instantiating trainer <{Trainer.__name__}>")
     cfg_trainer = OmegaConf.to_object(cfg.trainer)
-    trainer: Trainer = Trainer(**cfg_trainer)
+    trainer: Trainer = Trainer(callbacks=callbacks, logger=tensornboard_log, **cfg_trainer)
+    
+    # look for latest checkpoint in logdir and load it if found
+    if(cfg.get("ckpt_path") is None):
+        path_tmp = cfg.paths.output_dir + "/last.ckpt"
+        path_tmp_ema = cfg.paths.output_dir + "/last-EMA.ckpt"
+        if(os.path.exists(path_tmp_ema)):
+            checkpoint_path = path_tmp_ema
+            logger.info("Loading weights from last EMA ckpt " + checkpoint_path)
+        elif(os.path.exists(path_tmp)):
+            checkpoint_path = path_tmp
+            logger.info("Loading weights from last ckpt " + checkpoint_path)
+        else:
+            checkpoint_path = None
+    else:
+        checkpoint_path = cfg.get("ckpt_path")
+        if not os.path.exists(checkpoint_path):
+            checkpoint_path = None
+        else:
+            logger.info("Loading weights from ckpt " + checkpoint_path)
 
     if cfg.get("train"):
         logger.info("Starting training !!!")
-        trainer.fit(model=model, datamodule=datamodule, ckpt_path=checkpoint_path) # TODO: Load checkpoint path
+        trainer.fit(model=model, datamodule=datamodule, ckpt_path=checkpoint_path) 
 
 if __name__ == "__main__":
     config = OmegaConf.load("config/default.yaml")

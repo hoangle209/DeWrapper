@@ -2,10 +2,11 @@ import os
 import numpy as np
 import torch
 import torchvision.transforms as T
-import torrchvison.transforms.v2 as T_v2
+import torchvision.transforms.v2 as T_v2
 from PIL import Image
 from torch.utils.data import Dataset
 import glob
+import random
 
 from ..augmentation import SpatialRandAug, ColorRandAug, ClassifyLetterBox
 from DeWrapper.utils import make_divisible
@@ -109,7 +110,7 @@ class WrapDocDataset(Dataset):
             )]
         
         # Random Blur
-        if torch.rand() < self.cfg.dataset.blur:
+        if random.random() < self.cfg.dataset.blur:
             colored_aug += [T.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5.))]
 
         # Random erasing
@@ -119,7 +120,7 @@ class WrapDocDataset(Dataset):
             ]
 
         self.aug = {
-            "nor"    : T.Compsoe(aug),
+            "nor"    : T.Compose(aug),
             "colored": T.Compose(colored_aug),
             "ref"    : T.Compose(ref_aug)
         }
