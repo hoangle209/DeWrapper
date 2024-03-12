@@ -29,14 +29,16 @@ def pil_loader(path: str) -> Image.Image:
 
 
 class WrapDocDataset(Dataset):
+    ext = ["*.jpg", "*.png"]
     def __init__(self, cfg, train=True):
         self.cfg = cfg
         self.train = train
 
+        _t = "train" if train else "val"
         datapath = self.cfg.paths.data_dir
-        self.img_list = glob.glob(f"{datapath}/image/**/*.jpg", recursive=True)
-        self.label_list = glob.glob(f"{datapath}/digital/**/*.jpg", recursive=True)
-        self.margin_label_list = glob.glob(f"{datapath}/digital_margin/**/*.jpg", recursive=True)
+        self.img_list = []
+        for e in self.ext:
+            self.img_list.extend(glob.glob(f"{datapath}/{_t}/image/**/{e}", recursive=True))
 
         self.target_w = self.cfg.target_width
         self.target_h = self.cfg.target_height
@@ -67,11 +69,17 @@ class WrapDocDataset(Dataset):
         ref_aug = []
 
         # Resize
-        if self.cfg.dataset.random_resize:
+        if self.cfg.dataset.random_resize=="random":
             min_ = make_divisible(self.target_w*0.75, 32)
             max_ = self.target_w
             aug += [
                 T_v2.RandomResize(min_, max_),
+                ClassifyLetterBox(size=(self.target_h, self.target_w)), 
+                T.ToPILImage()
+                ]
+        elif self.cfg.dataset.random_resize=="pad":
+            aug += [
+                T.Resize(self.target_w),
                 ClassifyLetterBox(size=(self.target_h, self.target_w)), 
                 T.ToPILImage()
                 ]
@@ -102,7 +110,7 @@ class WrapDocDataset(Dataset):
                 std =[0.229, 0.224, 0.225]
             )]
         ref_aug += [
-            T.Resize((self.target_h, self.target_w)),
+            T.Resize((self.target_doc_h, self.target_doc_w)),
             T.ToTensor(),
             T.Normalize(
                 mean=[0.485, 0.456, 0.406], 
@@ -129,15 +137,15 @@ class WrapDocDataset(Dataset):
         img_ = self.aug["nor"](img)
         ref = self.aug["ref"](ref)
         colored = self.aug["colored"](img_)
-        deform1 = self.aug["nor"](img)
-        deform2 = self.aug["nor"](img)
+        # deform1 = self.aug["nor"](img)
+        # deform2 = self.aug["nor"](img)
 
         return {
             "img"    : img_,
             "ref"    : ref,
             "colored": colored,
-            "deform1": deform1,
-            "deform2": deform2
+            # "deform1": deform1,
+            # "deform2": deform2
         } 
     
 

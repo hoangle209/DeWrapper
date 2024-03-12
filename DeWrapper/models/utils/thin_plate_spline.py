@@ -108,8 +108,8 @@ class KorniaTPS(nn.Module):
         super().__init__()
     
         self.cfg = cfg
-        w = cfg.target_width
-        h = cfg.target_height
+        w = cfg.target_doc_w
+        h = cfg.target_doc_h
         grid_w = cfg.grid_width 
         grid_h = cfg.grid_height
 

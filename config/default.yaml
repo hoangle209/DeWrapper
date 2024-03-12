@@ -13,10 +13,17 @@ fourier_converter:
     platform  : "cv2" # platform to excute Fourier transform
                     # ["cv2", "torch"]
 
-target_width : 2560
-target_height: 3424
-grid_width   : 36
-grid_height  : 36
+# size of target image
+target_width : 2112
+target_height: 3008
+
+# size of target inside doc
+target_doc_w: 1344
+target_doc_h: 1920
+
+# grid size
+grid_width : 36
+grid_height: 36
 
 train: True 
 
@@ -91,7 +98,7 @@ dataloader:
 dataset:
     erasing: 0.4 # (float) probability of random erasing during classification training (0-1)
     blur: 0.4
-    random_resize: False
+    random_resize: "nor"
     rand_aug: "randaugment"
 
 callbacks:

@@ -85,9 +85,9 @@ def train(cfg: DictConfig):
         else:
             logger.info("Loading weights from ckpt " + checkpoint_path)
 
-    # if cfg.get("train"):
-    #     logger.info("Starting training !!!")
-    #     trainer.fit(model=model, datamodule=datamodule, ckpt_path=checkpoint_path) 
+    if cfg.get("train"):
+        logger.info("Starting training !!!")
+        trainer.fit(model=model, datamodule=datamodule, ckpt_path=checkpoint_path) 
 
 if __name__ == "__main__":
     config = OmegaConf.load("config/default.yaml")

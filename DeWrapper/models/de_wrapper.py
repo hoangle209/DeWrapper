@@ -5,6 +5,7 @@ from lightning.pytorch.utilities.rank_zero import rank_zero_only
 from lightning.pytorch.callbacks import Timer
 from torchmetrics import MeanMetric
 from kornia.geometry.transform import remap, warp_image_tps
+from kornia.augmentation import RandomThinPlateSpline
 import math
 
 import numpy as np
@@ -16,6 +17,7 @@ from DeWrapper.models.utils.thin_plate_spline import KorniaTPS
 from DeWrapper.utils import get_pylogger
 logger = get_pylogger()
 
+random_tps = RandomThinPlateSpline(scale=0.25, p=1.0, keepdim=True)
 
 class DeWrapper(LightningModule):
     """
@@ -56,50 +58,8 @@ class DeWrapper(LightningModule):
         self.fourier_converter = FourierConverter(self.cfg)
         self.kornia_tps = KorniaTPS(self.cfg)
 
-        # self.tps = TPS(self.cfg)
-        # if self.cfg.loss.mutual.enable:
-        #     self.kornia_tps = KorniaTPS(self.cfg)
-
         # Losses
-        self.configure_crit()
- 
-
-    # def forward_(self, x):
-    #     """Forward function. Using for inference 
-        
-    #     Parameters:
-    #     -----------
-    #         x: Tensor, (b, 3, h, w)
-    #             normalized input image
-    #     """
-    #     coarse_mesh = self.coarse_transformer(x)
-    #     _, mapX_coarse_, mapY_coarse_ = self.tps(coarse_mesh)
-    #     x_coarse = remap(x, 
-    #                      mapX_coarse_, mapY_coarse_,
-    #                      mode="bilinear", 
-    #                      padding_mode="zeros", 
-    #                      align_corners=True,
-    #                      normalized_coordinates=False) # whether the input coordinates are normalized in the range of [-1, 1].
-
-    #     refine_mesh = self.refine_transformer(x_coarse)
-    #     _, mapX_refine_, mapY_refine_ = self.tps(refine_mesh)
-    #     x_refine = remap(x_coarse, 
-    #                      mapX_refine_, mapY_refine_,
-    #                      mode="bilinear", 
-    #                      padding_mode="zeros", 
-    #                      align_corners=True,
-    #                      normalized_coordinates=False)
-
-    #     x_fft_converted = self.fourier_converter(x_refine) # Denoising for friendly OCR
-
-    #     output = {
-    #         "x_converted": x_fft_converted, 
-    #         "x_refine"   : x_refine,
-    #         "coarse_map" : (mapX_coarse_, mapY_coarse_),
-    #         "refine_map" : (mapX_refine_, mapY_refine_)
-    #     }
-    #     return output
-    
+        self.configure_crit()   
 
     def forward(self, x):
         """Forward function. Using for inference 
@@ -115,6 +75,7 @@ class DeWrapper(LightningModule):
                                   coarse_mesh,
                                   coarse_kernel_weight_,
                                   coarse_affine_weights_)
+        x_coarse = x_coarse[:, :, :self.cfg.target_doc_h, :self.cfg.target_doc_w]
         
         refine_mesh = self.refine_transformer(x_coarse)
         refine_kernel_weight_, refine_affine_weights_ = self.kornia_tps(refine_mesh)
@@ -122,18 +83,13 @@ class DeWrapper(LightningModule):
                                   refine_mesh,
                                   refine_kernel_weight_,
                                   refine_affine_weights_)
-        if self.training:
-            x_fft_converted = None
-        else: # calculate fourier in eval mode only
-            x_fft_converted = self.fourier_converter(x_refine) # Denoising for friendly OCR
+        
+        # calculate fourier in eval mode only
+        x_fft_converted = self.fourier_converter(x_refine) # Denoising for friendly OCR
         
         output = {
             "x_converted": x_fft_converted, 
             "x_refine"   : x_refine,
-            "coarse_mesh": coarse_mesh,
-            "coarse_map" : (coarse_kernel_weight_, coarse_affine_weights_),
-            "refine_mesh": refine_mesh,
-            "refine_map" : (refine_kernel_weight_, refine_affine_weights_),
         }
         return output
 
@@ -193,28 +149,32 @@ class DeWrapper(LightningModule):
 
         # Fourier Converter
         x_ = self.fourier_converter(img)
-        ref_ = self.fourier_converter(ref, is_normalized=False)
+        ref_ = self.fourier_converter(ref)
 
-        out = self.forward(colored)
-        coarse_mesh = out["coarse_mesh"]
-        coarse_kernel_weight_, coarse_affine_weights_ = out["coarse_map"]
-        refine_mesh = out["refine_mesh"]
-        refine_kernel_weight_, refine_affine_weights_= out["refine_map"] 
+        coarse_mesh = self.coarse_transformer(colored)
+        coarse_kernel_weight_, coarse_affine_weights_ = self.kornia_tps(coarse_mesh)
+        x_coarse = warp_image_tps(img, 
+                                  coarse_mesh,
+                                  coarse_kernel_weight_,
+                                  coarse_affine_weights_)
+        x_coarse = x_coarse[:, :, :self.cfg.target_doc_h, :self.cfg.target_doc_w]
+        
+        refine_mesh = self.refine_transformer(x_coarse)
+        refine_kernel_weight_, refine_affine_weights_ = self.kornia_tps(refine_mesh)
+        x_refine = warp_image_tps(x_coarse, 
+                                  refine_mesh,
+                                  refine_kernel_weight_,
+                                  refine_affine_weights_)
 
-        x_fft_coarse_ = warp_image_tps(x_, 
-                                       coarse_mesh,
-                                       coarse_kernel_weight_,
-                                       coarse_affine_weights_)
-        x_fft_refine_ = warp_image_tps(x_fft_coarse_, 
-                                       refine_mesh,
-                                       refine_kernel_weight_,
-                                       refine_affine_weights_)
+        x_fft_coarse_ = self.fourier_converter(x_coarse)
+        x_fft_refine_ = self.fourier_converter(x_refine)
+
         loss_coarse = self.crit(x_fft_coarse_, ref_)
         loss_refine = self.crit(x_fft_refine_, ref_)
 
         if self.cfg.loss.mutual.enable:
-            D1 = batch["deform1"]
-            D2 = batch["deform2"]
+            D1 = random_tps(img)
+            D2 = random_tps(img)
 
             d1_mesh = self.coarse_transformer(D1)
             d2_mesh = self.coarse_transformer(D2)
@@ -236,7 +196,6 @@ class DeWrapper(LightningModule):
             "total"  : loss_
         }
 
-
     def training_step(self, batch, batch_idx):
         loss = self.step(batch)
         self.train_loss(loss["total"].item())
@@ -256,10 +215,6 @@ class DeWrapper(LightningModule):
         loss = self.step(batch)
         self.train_loss(loss["total"].item())
         
-        
-        # if(self.cfg.compute_map and "ava" in self.cfg.action_space): 
-        #     self.evaluator_ava.store_results_batch(input_data, output_data, meta_data, smpl_output, video_name, slowfast_paths, output=copy.deepcopy(output[:, self.cfg.max_people:, :]))
-
         # update and log metrics
         for key in loss.keys():
             self.log("val/loss/" + key, loss[key].item(), on_step=False, on_epoch=True, prog_bar=True)
