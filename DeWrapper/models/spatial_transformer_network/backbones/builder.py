@@ -1,11 +1,19 @@
+from omegaconf import OmegaConf
+
 from .resnet import resnet_builder
+from .basic_encoder import BasicEncoder
+
 from DeWrapper.utils import get_pylogger
 logger = get_pylogger()
 
+
 def builder(cfg):
-    name = cfg.backbone.type
-    logger.info(f"Building backbone type {name}")
-    if "resnet" in name:
-        backone = resnet_builder(name)
+    logger.info(f"      - Backbone <{cfg.backbone.type}>")
+
+    if cfg.backbone.type[0:6] == "resnet":
+        backbone = resnet_builder(cfg.backbone.type)
+    elif cfg.backbone.type == "basic_encoder":
+        kwargs = OmegaConf.to_object(cfg.backbone.kwargs)
+        backbone = BasicEncoder(**kwargs)
     
-    return backone
+    return backbone

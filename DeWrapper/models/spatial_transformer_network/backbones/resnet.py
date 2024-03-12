@@ -102,7 +102,7 @@ resnet_spec = {
     }
 
 class Resnet(nn.Module):
-    def __init__(self, num_layers, load_pretrained=True):
+    def __init__(self, num_layers, load_pretrained=False):
         super().__init__()
         self.inplanes = 64
         block, layers = resnet_spec[num_layers]
@@ -126,6 +126,15 @@ class Resnet(nn.Module):
 
         if load_pretrained:
             self._init_weights(num_layers)
+        else:
+            for m in self.modules():
+                if isinstance(m, nn.Conv2d):
+                    nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
+                elif isinstance(m, (nn.BatchNorm2d, nn.InstanceNorm2d, nn.GroupNorm)):
+                    if m.weight is not None:
+                        nn.init.constant_(m.weight, 1)
+                    if m.bias is not None:
+                        nn.init.constant_(m.bias, 0)
 
 
     def _make_layer(self, block, planes, blocks, stride=1):

@@ -48,9 +48,9 @@ class DeWrapper(LightningModule):
         self.best_val_acc = 0
 
         # Models
-        logger.info("Creating Coarse Transformer...")
+        logger.info("   - Coarse Transformer...")
         self.coarse_transformer = STN(self.cfg)
-        logger.info("Creating Refine Transformer...")
+        logger.info("   - Refine Transformer...")
         self.refine_transformer = STN(self.cfg)
 
         self.fourier_converter = FourierConverter(self.cfg)

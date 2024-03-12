@@ -56,10 +56,10 @@ def train(cfg: DictConfig):
     logger.info(f"Instantiating model <{DeWrapper.__name__}>")
     model = DeWrapper(cfg)
 
-    logger.info("Instantiating callbacks...")
+    logger.info("Instantiating callbacks ...")
     callbacks: List[Callback] = instantiate_callbacks(cfg.get("callbacks"))
 
-    logger.info("Instantiating loggers...")
+    logger.info("Instantiating loggers ...")
     tensornboard_log: List[Logger] = instantiate_loggers(cfg.get("logger"))
 
     logger.info(f"Instantiating trainer <{Trainer.__qualname__}>")

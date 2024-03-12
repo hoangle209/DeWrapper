@@ -13,9 +13,9 @@ class FDRHead(nn.Module):
         super().__init__()
 
         self.cfg = cfg
-        mid_dim = 512
-        mid_dim_2 = 1024
-        en_dim = 1280
+        mid_dim = 128
+        mid_dim_2 = 128
+        en_dim = 128
         self.num_mid_dilate_cv = 3
         self.num_end_dilate_cv = 2
 

@@ -3,9 +3,8 @@ from DeWrapper.utils import get_pylogger
 logger = get_pylogger()
 
 def builder(cfg):
-    name = cfg.head.type
-    logger.info(f"Building head type {name}")
-    if name == "FDRHead":
+    logger.info(f"      - Head <{cfg.head.type}>")
+    if cfg.head.type == "FDRHead":
         head = FDRHead(cfg)
     
     return head

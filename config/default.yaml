@@ -1,5 +1,8 @@
 backbone: 
-    type: "resnet50"
+    type  : "basic_encoder"
+    kwargs:
+        output_dim: 256
+        norm_fn   : "instance"
 
 head:
     type: "FDRHead"
@@ -12,8 +15,8 @@ fourier_converter:
 
 target_width : 2560
 target_height: 3424
-grid_width   : 9
-grid_height  : 9
+grid_width   : 36
+grid_height  : 36
 
 train: True 
 
@@ -71,7 +74,7 @@ solver:
     name: "AdamW"
     lr: 0.0001
     momentum: 0.9
-    decay_steps: [10,20]
+    decay_steps: [15,20]
     decay_gamma: 0.1
     layer_decay: null
     ZERO_WD_1D_PARAM: True
@@ -93,7 +96,7 @@ dataset:
 
 callbacks:
     model_checkpoint:  
-        dirpath: ${paths.output_dir}/checkpoints
+        dirpath: ${paths.output_dir}
         filename: "epoch_{epoch:03d}"
         monitor: "step" #"val/mAP"
         mode: "max"
