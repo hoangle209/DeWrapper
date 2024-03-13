@@ -18,7 +18,7 @@ class STN(nn.Module):
         self.head = head_builder(self.cfg)
     
     def forward(self, x):
-        x = nn.Hardtanh(self.head(self.backbone(x)))
+        x = nn.Hardtanh()(self.head(self.backbone(x)))
         return x
 
 

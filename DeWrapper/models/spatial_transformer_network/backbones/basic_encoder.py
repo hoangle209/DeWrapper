@@ -85,6 +85,7 @@ class BasicEncoder(nn.Module):
 
         # output convolution
         self.conv2 = nn.Conv2d(192, output_dim, kernel_size=1)
+        self.channels.append(output_dim)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):

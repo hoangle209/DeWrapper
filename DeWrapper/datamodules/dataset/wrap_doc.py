@@ -94,14 +94,14 @@ class WrapDocDataset(Dataset):
         if self.train and self.cfg.dataset.rand_aug is not None:
             if self.cfg.dataset.rand_aug == "randaugment":
                 aug += [SpatialRandAug()]
-                colored_aug += [ColorRandAug()]
+                colored_aug = ColorRandAug()
             elif self.cfg.dataset.rand_aug == "autoaugment":
-                colored_aug += [T.AutoAugment()]
+                colored_aug = T.AutoAugment()
             else:
                 logger.warning(f"Augment type {self.cfg.dataset.rand_aug} is not implemented")
         
         # To tensor and Normalize
-        final_aug = [
+        to_tensor_and_nor = [
             T.ToTensor(),
             T.Normalize(
                 mean=[0.485, 0.456, 0.406], 
@@ -117,31 +117,31 @@ class WrapDocDataset(Dataset):
             )]
         
         # Random Blur
-        if 0. < self.cfg.dataset.blur:
-            colored_aug += [T.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5.))]
+        gaussian_blur = T.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5.))
 
         # Random erasing
         if self.cfg.dataset.erasing > 0:
-            colored_aug += [
-                T.RandomErasing(p=self.cfg.dataset.erasing, inplace=True)
-            ]
+            random_erasing = T.RandomErasing(p=self.cfg.dataset.erasing)
+            
 
         self.aug = {
-            "nor"    : T.Compose(aug),
-            "colored": T.Compose(colored_aug),
-            "ref"    : T.Compose(ref_aug),
-            "final"  : T.Compose(final_aug)
+            "nor"              : T.Compose(aug),
+            "ref"              : T.Compose(ref_aug),
+            "colored"          : colored_aug,
+            "gaussian_blur"    : gaussian_blur,
+            "random_erasing"   : random_erasing,
+            "to_tensor_and_nor": T.Compose(to_tensor_and_nor)
         }
 
     def apply_aug_(self, img, ref, margin_ref=None):
         img_ = self.aug["nor"](img)    
-        colored = self.aug["colored"](img_)
+        colored = self.aug["to_tensor_and_nor"](self.aug["colored"](img_))
+        if random.random() < self.cfg.dataset.blur:
+            colored = self.aug["gaussian_blur"](colored)
+        colored = self.aug["random_erasing"](colored)
 
-        img_ = self.aug["final"](img_)
-        colored = self.aug["final"](colored)
-
+        img_ = self.aug["to_tensor_and_nor"](img_)
         ref = self.aug["ref"](ref)
-
         return {
             "img"    : img_,
             "ref"    : ref,

@@ -96,7 +96,7 @@ dataloader:
     pin_memory: True
 
 dataset:
-    erasing: 0.4 # (float) probability of random erasing during classification training (0-1)
+    erasing: 0.25 # (float) probability of random erasing during classification training (0-1)
     blur: 0.4
     random_resize: "nor"
     rand_aug: "randaugment"
@@ -137,6 +137,5 @@ callbacks:
 
 logger:
     tensorboard:
-        _target_: lightning.pytorch.loggers.tensorboard.TensorBoardLogger
         save_dir: "${paths.output_dir}/tensorboard/"
         version: 0

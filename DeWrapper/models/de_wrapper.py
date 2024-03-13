@@ -148,9 +148,6 @@ class DeWrapper(LightningModule):
         colored = batch["colored"]
 
         # Fourier Converter
-        x_ = self.fourier_converter(img)
-        ref_ = self.fourier_converter(ref)
-
         coarse_mesh = self.coarse_transformer(colored)
         coarse_kernel_weight_, coarse_affine_weights_ = self.kornia_tps(coarse_mesh)
         x_coarse = warp_image_tps(img, 
@@ -168,7 +165,8 @@ class DeWrapper(LightningModule):
 
         x_fft_coarse_ = self.fourier_converter(x_coarse)
         x_fft_refine_ = self.fourier_converter(x_refine)
-
+        ref_ = self.fourier_converter(ref)
+        
         loss_coarse = self.crit(x_fft_coarse_, ref_)
         loss_refine = self.crit(x_fft_refine_, ref_)
 
