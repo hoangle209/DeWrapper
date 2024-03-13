@@ -33,7 +33,7 @@ debug: True
 
 paths: 
     root_dir  : ${oc.env:PROJECT_ROOT}
-    data_dir  : /home/hoang/Downloads/data/WarpDoc
+    data_dir  : C:/Users/ADMIN/Downloads/Dataset/WarpDoc
     log_dir   : ${paths.root_dir}/logs/
     output_dir: ${paths.root_dir}/checkpoints/
 

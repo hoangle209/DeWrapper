@@ -69,23 +69,11 @@ class FourierConverter(nn.Module):
                 transforms.Normalize(mean = [-0.485, -0.456, -0.406], std = [1., 1., 1.]),
                 color.rgb_to_grayscale
         ])
-
-        w = cfg.target_width
-        h = cfg.target_height
-        blank = torch.full((1, 1, h, w), fill_value=255.0, dtype=torch.float32)
-        self.blank_fft = fft.fft2(blank) # (1, 1, h, w)
-        
-        self.mask = torch.ones(1, 1, h, w)
+        self.cfg = cfg
         if cfg.train:
             self.beta = cfg.fourier_converter.beta_train
         else:
             self.beta = cfg.fourier_converter.beta_test
-        
-        masked_w = int(self.beta * w)
-        masked_h = int(self.beta * h)
-        cy, cx = int(h//2), int(w//2)
-        self.mask[:, :, -masked_h + cy : masked_h + cy,
-                        -masked_w + cx : masked_w + cx] = 0.0
     
     def forward(self, x, is_normalized=True):
         """
@@ -98,7 +86,20 @@ class FourierConverter(nn.Module):
         x_denormalize = self.invNormalize(x) * 255. if is_normalized \
                         else x # (b, 1, h, w)
         x_fft = fft.fft2(x_denormalize) # (b, 1, h, w)
-        x_fft_high_freq = x_fft * self.mask + self.blank_fft * (1. - self.mask)
+
+        b, _, h, w = x_fft.size()
+        blank = torch.full((b, 1, h, w), fill_value=255.0).to(x.device)
+        blank_fft = fft.ifft2(blank)
+
+        masked_w = int(self.beta * w)
+        masked_h = int(self.beta * h)
+        cy, cx = int(h//2), int(w//2)
+        mask = torch.ones(b, 1, h, w).to(x.device)
+        mask[:, :, 
+             -masked_h + cy : masked_h + cy,
+             -masked_w + cx : masked_w + cx] = 0.0
+
+        x_fft_high_freq = x_fft * mask + blank_fft * (1. - mask)
         
         # shift the origin to the beginning of the vector (top-left in 2D case)
         x_ishift = fft.ifftshift(x_fft_high_freq)

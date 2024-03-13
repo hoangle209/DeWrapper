@@ -123,7 +123,7 @@ class KorniaTPS(nn.Module):
     def forward(self, control_points, target_points=None):
         if target_points is None:
             B, N, _ = control_points.size()
-            target_points = self.target_control_points.expand(B, N, 2)
+            target_points = self.target_control_points.expand(B, N, 2).to(control_points.device)
 
         kernel_weight, affine_weights = get_tps_transform(target_points, control_points)
         return kernel_weight, affine_weights
