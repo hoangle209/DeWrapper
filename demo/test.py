@@ -26,5 +26,5 @@ if __name__ == "__main__":
     logger.info(f"Instantiating datamodule <{WrapDocDatamodule.__name__}>")
     datamodule = WrapDocDatamodule(cfg)
     datamodule.setup()
-    train_dataloader = datamodule.train_dataloader()
-    print(len(train_dataloader))
+    # train_dataloader = datamodule.train_dataloader()
+    datamodule.data_train.__getitem__(0)

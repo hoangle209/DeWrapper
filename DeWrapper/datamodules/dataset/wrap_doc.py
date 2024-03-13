@@ -4,6 +4,7 @@ import torch
 import torchvision.transforms as T
 import torchvision.transforms.v2 as T_v2
 from PIL import Image
+import cv2 
 from torch.utils.data import Dataset
 import glob
 import random
@@ -42,6 +43,9 @@ class WrapDocDataset(Dataset):
 
         self.target_w = self.cfg.target_width
         self.target_h = self.cfg.target_height
+        self.target_doc_w = self.cfg.target_doc_w
+        self.target_doc_h = self.cfg.target_doc_h
+
 
         self.configure_aug()
     
@@ -54,11 +58,11 @@ class WrapDocDataset(Dataset):
         path[-3] = "digital"
         ref_path = "/".join(path)
         path[-3] = "digital_margin"
-        margin_ref_path = "/".join(path)
+        # margin_ref_path = "/".join(path)
 
         img = pil_loader(img_path)
         ref = pil_loader(ref_path)
-        margin_ref = pil_loader(margin_ref_path)
+        # margin_ref = pil_loader(margin_ref_path)
 
         input = self.apply_aug_(img, ref)
         return input
@@ -97,18 +101,13 @@ class WrapDocDataset(Dataset):
                 logger.warning(f"Augment type {self.cfg.dataset.rand_aug} is not implemented")
         
         # To tensor and Normalize
-        aug += [
+        final_aug = [
             T.ToTensor(),
             T.Normalize(
                 mean=[0.485, 0.456, 0.406], 
                 std =[0.229, 0.224, 0.225]
             )]
-        colored_aug += [
-            T.ToTensor(),
-            T.Normalize(
-                mean=[0.485, 0.456, 0.406], 
-                std =[0.229, 0.224, 0.225]
-            )]
+
         ref_aug += [
             T.Resize((self.target_doc_h, self.target_doc_w)),
             T.ToTensor(),
@@ -118,7 +117,7 @@ class WrapDocDataset(Dataset):
             )]
         
         # Random Blur
-        if random.random() < self.cfg.dataset.blur:
+        if 0. < self.cfg.dataset.blur:
             colored_aug += [T.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5.))]
 
         # Random erasing
@@ -130,22 +129,23 @@ class WrapDocDataset(Dataset):
         self.aug = {
             "nor"    : T.Compose(aug),
             "colored": T.Compose(colored_aug),
-            "ref"    : T.Compose(ref_aug)
+            "ref"    : T.Compose(ref_aug),
+            "final"  : T.Compose(final_aug)
         }
 
     def apply_aug_(self, img, ref, margin_ref=None):
-        img_ = self.aug["nor"](img)
-        ref = self.aug["ref"](ref)
+        img_ = self.aug["nor"](img)    
         colored = self.aug["colored"](img_)
-        # deform1 = self.aug["nor"](img)
-        # deform2 = self.aug["nor"](img)
+
+        img_ = self.aug["final"](img_)
+        colored = self.aug["final"](colored)
+
+        ref = self.aug["ref"](ref)
 
         return {
             "img"    : img_,
             "ref"    : ref,
             "colored": colored,
-            # "deform1": deform1,
-            # "deform2": deform2
         } 
     
 
