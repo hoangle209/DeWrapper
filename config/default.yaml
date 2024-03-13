@@ -27,7 +27,7 @@ grid_height: 36
 
 train: True 
 
-# ckpt_path: None
+ckpt_path: None
 
 debug: True
 
