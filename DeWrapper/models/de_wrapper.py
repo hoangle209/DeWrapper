@@ -51,11 +51,21 @@ class DeWrapper(LightningModule):
 
         # Models
         logger.info("   - Coarse Transformer...")
-        self.coarse_transformer = STN(self.cfg)
-        logger.info("   - Refine Transformer...")
-        self.refine_transformer = STN(self.cfg)
+        self.cfg.coarse_module.grid_width = self.cfg.grid_width
+        self.cfg.coarse_module.grid_height = self.cfg.grid_height
+        self.coarse_transformer = STN(self.cfg.coarse_module)
 
-        self.fourier_converter = FourierConverter(self.cfg)
+        logger.info("   - Refine Transformer...")
+        self.cfg.refine_module.grid_width = self.cfg.grid_width
+        self.cfg.refine_module.grid_height = self.cfg.grid_height
+        self.refine_transformer = STN(self.cfg.refine_module)
+
+        if self.cfg.train:
+            beta = self.cfg.fourier_converter.beta_train
+        else:
+            beta = self.cfg.fourier_converter.beta_test
+        self.fourier_converter = FourierConverter(beta)
+        
         self.kornia_tps = KorniaTPS(self.cfg)
 
         # Losses

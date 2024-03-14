@@ -60,20 +60,15 @@ class FourierConverter(nn.Module):
     (through inverse Fast Fourier Transform (iFFT)), 
     which produces the OCR-friendly document images with most appearance noises successfully removed.
     """
-    def __init__(self, cfg):
+    def __init__(self, beta=0.008):
         super().__init__()
-        self.cfg = cfg
 
         self.invNormalize = transforms.Compose([
                 transforms.Normalize(mean = [0., 0., 0.], std = [1/0.229, 1/0.224, 1/0.225]),
                 transforms.Normalize(mean = [-0.485, -0.456, -0.406], std = [1., 1., 1.]),
                 color.rgb_to_grayscale
         ])
-        self.cfg = cfg
-        if cfg.train:
-            self.beta = cfg.fourier_converter.beta_train
-        else:
-            self.beta = cfg.fourier_converter.beta_test
+        self.beta = beta
     
     def forward(self, x, is_normalized=True):
         """

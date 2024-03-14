@@ -1,11 +1,20 @@
-backbone: 
-    type  : "basic_encoder"
-    kwargs:
-        output_dim: 256
-        norm_fn   : "instance"
+coarse_module:
+    backbone: 
+        type  : "basic_encoder"
+        kwargs:
+            output_dim: 256
+            norm_fn   : "instance"
+    head:
+        type: "FDRHead"
 
-head:
-    type: "FDRHead"
+refine_module:
+    backbone: 
+        type  : "basic_encoder"
+        kwargs:
+            output_dim: 256
+            norm_fn   : "instance"
+    head:
+        type: "FDRHead"
 
 fourier_converter:
     beta_train: 0.06
@@ -14,16 +23,16 @@ fourier_converter:
                     # ["cv2", "torch"]
 
 # size of target image
-target_width : 2112
-target_height: 3008
+target_width : 1024
+target_height: 1472
 
 # size of target inside doc
-target_doc_w: 1344
-target_doc_h: 1920
+target_doc_w: 768
+target_doc_h: 1088
 
 # grid size
-grid_width : 36
-grid_height: 36
+grid_width : 25
+grid_height: 25
 
 train: True 
 
