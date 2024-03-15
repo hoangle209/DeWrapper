@@ -76,6 +76,8 @@ trainer:
     sync_batchnorm: null
     strategy: ddp_find_unused_parameters_true 
 
+log_frequency: 100
+
 loss: 
     coarse: "L1"
     refine: "L1"

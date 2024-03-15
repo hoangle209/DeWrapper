@@ -58,10 +58,15 @@ class WrapDocDataset(Dataset):
         path[-3] = "digital"
         ref_path = "/".join(path)
         path[-3] = "digital_margin"
-        # margin_ref_path = "/".join(path)
 
         img = pil_loader(img_path)
-        ref = pil_loader(ref_path)
+        try:
+            ref = pil_loader(ref_path)
+        except:
+            _ext = ref_path[-3:].upper()
+            ref_path[-3:] = _ext
+
+        # margin_ref_path = "/".join(path)
         # margin_ref = pil_loader(margin_ref_path)
 
         input = self.apply_aug_(img, ref)
@@ -134,7 +139,8 @@ class WrapDocDataset(Dataset):
         }
 
     def apply_aug_(self, img, ref, margin_ref=None):
-        img_ = self.aug["nor"](img)    
+        img_ = self.aug["nor"](img)   
+
         colored = self.aug["to_tensor_and_nor"](self.aug["colored"](img_))
         if random.random() < self.cfg.dataset.blur:
             colored = self.aug["gaussian_blur"](colored)
