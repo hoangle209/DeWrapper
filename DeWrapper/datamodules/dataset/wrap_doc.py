@@ -64,7 +64,9 @@ class WrapDocDataset(Dataset):
             ref = pil_loader(ref_path)
         except:
             _ext = ref_path[-3:].upper()
-            ref_path[-3:] = _ext
+            ref_path = ref_path.split('.')
+            ref_path[-1] = _ext
+            ref_path = '.'.join(ref_path)
 
         # margin_ref_path = "/".join(path)
         # margin_ref = pil_loader(margin_ref_path)

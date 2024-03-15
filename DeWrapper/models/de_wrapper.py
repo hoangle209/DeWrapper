@@ -141,7 +141,6 @@ class DeWrapper(LightningModule):
                                 Using L1 loss as default...")
                 self.crit_mutual = loss_type["L1"]
 
-
     def on_train_start(self):
         torch.cuda.empty_cache()
         if self.cfg.debug:
@@ -150,7 +149,6 @@ class DeWrapper(LightningModule):
     def on_train_epoch_end(self):
         logger.info("\n " + self.cfg.paths.output_dir +  " : Training epoch " + str(self.current_epoch) + " ended.")
     
-
     def step(self, batch):
         img = batch["img"]
         ref = batch["ref"] # ground-truth
@@ -216,13 +214,16 @@ class DeWrapper(LightningModule):
 
     def training_step(self, batch, batch_idx):
         loss = self.step(batch)
-        self.train_loss(loss["total"].item())
+        self.train_loss.update(loss["total"].item())
         for key in loss.keys():
             self.log("train/loss/" + key, loss[key].item(), on_step=False, on_epoch=True, prog_bar=True)
-        self.log_iter_stats(batch_idx)
-
+        
+        # self.log_iter_stats(batch_idx)
         del batch
-        return loss["total"]
+        running_loss = self.train_loss.compute().item()
+        self.train_loss.reset()
+
+        return {"loss": loss["total"], "prog_bar": {"running_loss": running_loss}}
 
     def on_validation_start(self):
         torch.cuda.empty_cache()
@@ -231,13 +232,16 @@ class DeWrapper(LightningModule):
     
     def validation_step(self, batch, batch_idx):
         loss = self.step(batch)
-        self.val_loss(loss["total"].item())
+        self.val_loss.update(loss["total"].item())
         
         # update and log metrics
         for key in loss.keys():
             self.log("val/loss/" + key, loss[key].item(), on_step=False, on_epoch=True, prog_bar=True)
+    
+    def on_validation_epoch_end(self):
+        self.log_iter_stats()
 
-    def log_iter_stats(self, cur_iter): # TODO
+    def log_iter_stats(self, cur_iter=1): # TODO
         def gpu_mem_usage():
             """Computes the GPU memory usage for the current device (MB)."""
             mem_usage_bytes = torch.cuda.max_memory_allocated()
@@ -268,6 +272,10 @@ class DeWrapper(LightningModule):
         
         logger.info(stats)
     
+    def get_progress_bar_dict(self):
+        tqdm_dict = super().get_progress_bar_dict()
+        tqdm_dict.pop("v_num", None)
+        return tqdm_dict
 
     def configure_optimizers(self):
         """Choose what optimizers and learning-rate schedulers to use in your optimization.
@@ -308,9 +316,9 @@ class DeWrapper(LightningModule):
             return lr
 
         if(self.cfg.solver.scheduler == "cosine"):
-            scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=[warm_start_and_cosine_annealing for _ in range(len(optim_params))], verbose=False)
+            scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=[warm_start_and_cosine_annealing for _ in range(len(optim_params))])
         else:
-            scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, self.cfg.solver.decay_steps, gamma=self.cfg.solver.decay_gamma, verbose=False)
+            scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, self.cfg.solver.decay_steps, gamma=self.cfg.solver.decay_gamma)
 
         return {
             "optimizer": optimizer,
