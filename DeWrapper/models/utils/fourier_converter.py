@@ -62,12 +62,6 @@ class FourierConverter(nn.Module):
     """
     def __init__(self, beta=0.008):
         super().__init__()
-
-        self.invNormalize = transforms.Compose([
-                transforms.Normalize(mean = [0., 0., 0.], std = [1/0.229, 1/0.224, 1/0.225]),
-                transforms.Normalize(mean = [-0.485, -0.456, -0.406], std = [1., 1., 1.]),
-                color.rgb_to_grayscale
-        ])
         self.beta = beta
     
     def forward(self, x, is_normalized=True):
@@ -78,8 +72,8 @@ class FourierConverter(nn.Module):
             is_normalized, bool, default=True
                 whether input Tensor is normalize
         """
-        x_denormalize = self.invNormalize(x) * 255. if is_normalized \
-                        else x # (b, 1, h, w)
+        x_denormalize = color.bgr_to_grayscale(x) * 255. if is_normalized \
+                        else color.bgr_to_grayscale(x) # (b, 1, h, w)
         x_fft = fft.fft2(x_denormalize) # (b, 1, h, w)
 
         b, _, h, w = x_fft.size()

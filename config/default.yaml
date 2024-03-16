@@ -107,10 +107,11 @@ dataloader:
     pin_memory: True
 
 dataset:
-    erasing: 0.25 # (float) probability of random erasing during classification training (0-1)
+    brightness: 0.3
+    constrast: 0.3
+    sharpness: 0.3
     blur: 0.4
-    random_resize: "nor"
-    rand_aug: "randaugment"
+    geometry: 0.25
 
 callbacks:
     model_checkpoint:  

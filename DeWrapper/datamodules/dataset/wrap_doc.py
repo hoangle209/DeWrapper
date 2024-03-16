@@ -9,10 +9,13 @@ from torch.utils.data import Dataset
 import glob
 import random
 
-from ..augmentation import SpatialRandAug, ColorRandAug, ClassifyLetterBox
-from DeWrapper.utils import make_divisible
+from DeWrapper.datamodules.augmentation.blur import GaussianBlur, MotionBlur, DefocusBlur, ZoomBlur, GlassBlur
+from DeWrapper.datamodules.augmentation.geometry import Perspective, TranslateX, TranslateY
 from DeWrapper.utils import get_pylogger
 logger = get_pylogger(__name__)
+
+DEFAULT_MEAN = [0., 0., 0.]
+DEFAULT_STD  = [1., 1., 1.]
 
 def to_torch(ndarray):
     if type(ndarray).__module__ == 'numpy':
@@ -46,7 +49,6 @@ class WrapDocDataset(Dataset):
         self.target_doc_w = self.cfg.target_doc_w
         self.target_doc_h = self.cfg.target_doc_h
 
-
         self.configure_aug()
     
     def __len__(self):
@@ -67,94 +69,84 @@ class WrapDocDataset(Dataset):
             ref_path = ref_path.split('.')
             ref_path[-1] = _ext
             ref_path = '.'.join(ref_path)
-
-        # margin_ref_path = "/".join(path)
-        # margin_ref = pil_loader(margin_ref_path)
+            ref = pil_loader(ref_path)
 
         input = self.apply_aug_(img, ref)
         return input
 
     def configure_aug(self):
-        aug = []
-        colored_aug = []
-        ref_aug = []
-
-        # Resize
-        if self.cfg.dataset.random_resize=="random":
-            min_ = make_divisible(self.target_w*0.75, 32)
-            max_ = self.target_w
-            aug += [
-                T_v2.RandomResize(min_, max_),
-                ClassifyLetterBox(size=(self.target_h, self.target_w)), 
-                T.ToPILImage()
-                ]
-        elif self.cfg.dataset.random_resize=="pad":
-            aug += [
-                T.Resize(self.target_w),
-                ClassifyLetterBox(size=(self.target_h, self.target_w)), 
-                T.ToPILImage()
-                ]
-        else:
-            aug += [T.Resize((self.target_h, self.target_w))]
-
-        # Affine and Color transform
-        if self.train and self.cfg.dataset.rand_aug is not None:
-            if self.cfg.dataset.rand_aug == "randaugment":
-                aug += [SpatialRandAug()]
-                colored_aug = ColorRandAug()
-            elif self.cfg.dataset.rand_aug == "autoaugment":
-                colored_aug = T.AutoAugment()
-            else:
-                logger.warning(f"Augment type {self.cfg.dataset.rand_aug} is not implemented")
-        
-        # To tensor and Normalize
-        to_tensor_and_nor = [
+        resize = T.Resize((self.target_h, self.target_w))
+        to_tensor_and_norm = [
             T.ToTensor(),
-            T.Normalize(
-                mean=[0.485, 0.456, 0.406], 
-                std =[0.229, 0.224, 0.225]
-            )]
+            T.Normalize(mean=DEFAULT_MEAN, std=DEFAULT_STD)
+        ]
 
-        ref_aug += [
+        # Blur
+        p_blur = 1 - self.cfg.dataset.blur
+        blur = [
+            GaussianBlur(prob=p_blur), 
+            MotionBlur(prob=p_blur), 
+            DefocusBlur(prob=p_blur), 
+            ZoomBlur(prob=p_blur), 
+            GlassBlur(prob=p_blur)
+        ]
+
+        # Geometry
+        p_geometry = 1 - self.cfg.dataset.geometry
+        geometry = [
+            T.RandomRotation((-30, 30), expand=True), 
+            Perspective(prob=p_geometry), 
+            TranslateX(prob=p_geometry), 
+            TranslateY(prob=p_geometry)
+        ]
+
+        ref_aug = [
             T.Resize((self.target_doc_h, self.target_doc_w)),
             T.ToTensor(),
-            T.Normalize(
-                mean=[0.485, 0.456, 0.406], 
-                std =[0.229, 0.224, 0.225]
-            )]
+            T.Normalize(mean=DEFAULT_MEAN, std=DEFAULT_STD)
+        ]
         
-        # Random Blur
-        gaussian_blur = T.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5.))
-
-        # Random erasing
-        if self.cfg.dataset.erasing > 0:
-            random_erasing = T.RandomErasing(p=self.cfg.dataset.erasing)
-            
-
         self.aug = {
-            "nor"              : T.Compose(aug),
-            "ref"              : T.Compose(ref_aug),
-            "colored"          : colored_aug,
-            "gaussian_blur"    : gaussian_blur,
-            "random_erasing"   : random_erasing,
-            "to_tensor_and_nor": T.Compose(to_tensor_and_nor)
+            "resize": resize,
+            "to_tensor_and_norm": to_tensor_and_norm,
+            "reference": T.Compose(ref_aug), 
+            "geometry": T.Compose(geometry),
+            "blur": blur,
         }
 
-    def apply_aug_(self, img, ref, margin_ref=None):
-        img_ = self.aug["nor"](img)   
+    def apply_aug_(self, img, ref):
+        input = {}
+        if self.train:
+            img_soft = self.aug["geometry"](self.aug["resize"](img))   
+            img_hard = img_soft
 
-        colored = self.aug["to_tensor_and_nor"](self.aug["colored"](img_))
-        if random.random() < self.cfg.dataset.blur:
-            colored = self.aug["gaussian_blur"](colored)
-        colored = self.aug["random_erasing"](colored)
+            # brightness | constrast | shaepness
+            if random.random() > (1 - self.cfg.dataset.brightness):
+                brightness_factor = random.uniform(0.9, 1.2)
+                img_hard = T.adjust_brightness(img_hard, brightness_factor)
+            
+            if random.random() > (1 - self.cfg.dataset.constrast):
+                constrast_factor = random.uniform(0.9, 1.2)
+                img_hard = T.adjust_constrast(img_hard, constrast_factor)
 
-        img_ = self.aug["to_tensor_and_nor"](img_)
-        ref = self.aug["ref"](ref)
-        return {
-            "img"    : img_,
-            "ref"    : ref,
-            "colored": colored,
-        } 
+            if random.random() > (1 - self.cfg.dataset.sharpness):
+                sharpness_factor = random.uniform(1.0, 1.3)
+                img_hard = T.adjust_constrast(img_hard, sharpness_factor)
+
+            # blur
+            blur_idx = random.randint(0, len(self.aug["blur"]))
+            img_hard = self.aug["blur"][blur_idx](img_hard)
+
+            input |= {
+                "soft_img": self.aug["to_tensor_and_norm"](img_soft), 
+                "hard_img": self.aug["to_tensor_and_norm"](img_hard)}
+
+        input |= {
+            "normal_img": self.aug["to_tensor_and_norm"](self.aug["resize"](img)),
+            "reference" : self.aug["ref"](ref),
+        }
+    
+        return input 
     
 
 

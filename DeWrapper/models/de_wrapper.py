@@ -150,14 +150,15 @@ class DeWrapper(LightningModule):
         logger.info("\n " + self.cfg.paths.output_dir +  " : Training epoch " + str(self.current_epoch) + " ended.")
     
     def step(self, batch):
-        img = batch["img"]
-        ref = batch["ref"] # ground-truth
-        colored = batch["colored"]
+        normal_img = batch["normal_img"]
+        soft_img   = batch["soft_img"]
+        hard_img   = batch["hard_img"]
+        reference  = batch["reference"] # ground-truth
 
         # Fourier Converter
-        coarse_mesh = self.coarse_transformer(colored)
+        coarse_mesh = self.coarse_transformer(hard_img)
         coarse_kernel_weight_, coarse_affine_weights_ = self.kornia_tps(coarse_mesh)
-        x_coarse = warp_image_tps(img, 
+        x_coarse = warp_image_tps(soft_img, 
                                   coarse_mesh,
                                   coarse_kernel_weight_,
                                   coarse_affine_weights_)
@@ -174,56 +175,55 @@ class DeWrapper(LightningModule):
 
         x_fft_coarse_ = self.fourier_converter(x_coarse.cpu())
         x_fft_refine_ = self.fourier_converter(x_refine.cpu())
-        ref_ = self.fourier_converter(ref.cpu())
+        ref_ = self.fourier_converter(reference.cpu())
         
-        loss_coarse = self.crit_coarse(x_fft_coarse_, ref_.detach())
-        loss_refine = self.crit_refine(x_fft_refine_, ref_.detach())
+        loss_coarse = self.crit_coarse(x_fft_coarse_, ref_.detach(), reduction='mean')
+        loss_refine = self.crit_refine(x_fft_refine_, ref_.detach(), reduction='mean')
 
         if self.cfg.loss.mutual.enable:
-            D1 = random_tps(img)
-            D2 = random_tps(img)
+            D1 = random_tps(normal_img)
+            D2 = random_tps(normal_img)
 
             d1_mesh = self.coarse_transformer(D1)
             d2_mesh = self.coarse_transformer(D2)
             kernel_weight_1, affine_weights_1 = self.kornia_tps(d1_mesh, d2_mesh) # d1 to d2
             kernel_weight_2, affine_weights_2 = self.kornia_tps(d2_mesh, d1_mesh) # d2 to d1
 
-            wrapedD2 = warp_image_tps(D1, 
-                                      d1_mesh, 
-                                      kernel_weight_1, 
-                                      affine_weights_1)
+            wraped_D2 = warp_image_tps(D1, 
+                                       d1_mesh, 
+                                       kernel_weight_1, 
+                                       affine_weights_1)
             del kernel_weight_1, affine_weights_1
 
-            wrapedD1 = warp_image_tps(D2, 
-                                      d2_mesh, 
-                                      kernel_weight_2, 
-                                      affine_weights_2)
+            wraped_D1 = warp_image_tps(D2, 
+                                       d2_mesh, 
+                                       kernel_weight_2, 
+                                       affine_weights_2)
             del kernel_weight_2, affine_weights_2
 
-            loss_mutual = self.crit_mutual(wrapedD1.cpu(), D1.detach().cpu()) + self.crit_mutual(wrapedD2.cpu(), D2.detach().cpu())
+            loss_mutual = self.crit_mutual(wraped_D1.cpu(), D1.detach().cpu(), reduction='mean') + \
+                          self.crit_mutual(wraped_D2.cpu(), D2.detach().cpu(), reduction='mean')
             w = self.cfg.loss.mutual.weight
-            loss_coarse += w * loss_mutual
+            loss_coarse += w * loss_mutual * 255.
         
         loss_ = loss_coarse + loss_refine
 
+        del D1, D2
         return {
             "coarse": loss_coarse,
             "refine": loss_refine,
-            "total"  : loss_
+            "mutual": loss_mutual * 255.,
+            "total" : loss_
         }
 
     def training_step(self, batch, batch_idx):
         loss = self.step(batch)
         self.train_loss.update(loss["total"].item())
         for key in loss.keys():
-            self.log("train/loss/" + key, loss[key].item(), on_step=False, on_epoch=True, prog_bar=True)
+            self.log(key, loss[key].item(), on_step=True, on_epoch=True, prog_bar=True)
         
-        # self.log_iter_stats(batch_idx)
         del batch
-        running_loss = self.train_loss.compute().item()
-        self.train_loss.reset()
-
-        return {"loss": loss["total"], "prog_bar": {"running_loss": running_loss}}
+        return {"loss": loss["total"]}
 
     def on_validation_start(self):
         torch.cuda.empty_cache()
@@ -231,15 +231,20 @@ class DeWrapper(LightningModule):
             self.trainer.datamodule.data_val.__getitem__(0)
     
     def validation_step(self, batch, batch_idx):
-        loss = self.step(batch)
-        self.val_loss.update(loss["total"].item())
+        out = self.forward(batch["normal_img"])
+        ref_ = self.fourier_converter(batch["reference"].cpu())
+
+        loss = self.crit_coarse(out["x_converted"].cpu(), ref_.detach(), reduction='mean')
+        self.val_loss.update(loss.item())
         
         # update and log metrics
-        for key in loss.keys():
-            self.log("val/loss/" + key, loss[key].item(), on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_loss", loss.item(), on_step=True, on_epoch=True, prog_bar=True)
+        
+        del batch
+        return {"loss": loss}
     
     def on_validation_epoch_end(self):
-        self.log_iter_stats()
+        self.log_iter_stats(self.cfg.log_frequency)
 
     def log_iter_stats(self, cur_iter=1): # TODO
         def gpu_mem_usage():
@@ -271,11 +276,6 @@ class DeWrapper(LightningModule):
         self.val_loss.reset()
         
         logger.info(stats)
-    
-    def get_progress_bar_dict(self):
-        tqdm_dict = super().get_progress_bar_dict()
-        tqdm_dict.pop("v_num", None)
-        return tqdm_dict
 
     def configure_optimizers(self):
         """Choose what optimizers and learning-rate schedulers to use in your optimization.
