@@ -4,7 +4,6 @@ import torch
 import torchvision.transforms as T
 import torchvision.transforms.v2 as T_v2
 from PIL import Image
-import cv2 
 from torch.utils.data import Dataset
 import glob
 import random
@@ -85,7 +84,7 @@ class WrapDocDataset(Dataset):
         p_blur = 1 - self.cfg.dataset.blur
         blur = [
             GaussianBlur(prob=p_blur), 
-            MotionBlur(prob=p_blur), 
+            # MotionBlur(prob=p_blur), 
             DefocusBlur(prob=p_blur), 
             ZoomBlur(prob=p_blur), 
             GlassBlur(prob=p_blur)

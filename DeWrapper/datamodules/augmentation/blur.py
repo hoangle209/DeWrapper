@@ -21,7 +21,7 @@ import numpy as np
 import torchvision.transforms as transforms
 from PIL import Image, ImageOps
 from skimage.filters import gaussian
-from wand.image import Image as WandImage
+# from wand.image import Image as WandImage
 
 
 def disk(radius, alias_blur=0.1, dtype=np.float32):
