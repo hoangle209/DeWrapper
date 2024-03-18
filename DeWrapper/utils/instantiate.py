@@ -3,7 +3,7 @@ from typing import List
 from lightning import Callback
 from lightning.pytorch.loggers import Logger
 from lightning.pytorch.utilities import rank_zero_only
-from lightning.pytorch.callbacks import RichModelSummary, RichProgressBar, LearningRateMonitor, Timer
+from lightning.pytorch.callbacks import RichModelSummary, TQDMProgressBar, LearningRateMonitor, Timer
 from lightning.pytorch.loggers.tensorboard import TensorBoardLogger
 
 from .ema_checkpoints import EMACheckpoint, EMA
@@ -25,9 +25,9 @@ def instantiate_callbacks(callbacks_cfg: DictConfig) -> List[Callback]:
         if cb_key == "model_summary":
             keys_ = OmegaConf.to_object(callbacks_cfg.get(cb_key))
             cb_ = RichModelSummary(**keys_)
-        elif cb_key == "rich_progress_bar":
+        elif cb_key == "tqdm_progress_bar":
             keys_ = OmegaConf.to_object(callbacks_cfg.get(cb_key))
-            cb_ = RichProgressBar(**keys_)
+            cb_ = TQDMProgressBar(**keys_)
         elif cb_key == "learning_rate_monitor":
             cb_ = LearningRateMonitor()
         elif cb_key == "timer":

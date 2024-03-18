@@ -1,7 +1,6 @@
 import torch
 import torch.nn.functional as F
 from lightning import LightningModule
-from lightning.pytorch.utilities.rank_zero import rank_zero_only
 from lightning.pytorch.callbacks import Timer
 from torchmetrics import MeanMetric
 from kornia.geometry.transform import remap, warp_image_tps
@@ -49,26 +48,29 @@ class DeWrapper(LightningModule):
         self.best_val_acc = 0
 
         # Models
-        logger.info("   - Coarse Transformer...")
         self.cfg.coarse_module.grid_width = self.cfg.grid_width
         self.cfg.coarse_module.grid_height = self.cfg.grid_height
         self.coarse_transformer = STN(self.cfg.coarse_module)
 
-        logger.info("   - Refine Transformer...")
         self.cfg.refine_module.grid_width = self.cfg.grid_width
         self.cfg.refine_module.grid_height = self.cfg.grid_height
         self.refine_transformer = STN(self.cfg.refine_module)
 
+        # Fourier
         if self.cfg.train:
             beta = self.cfg.fourier_converter.beta_train
         else:
             beta = self.cfg.fourier_converter.beta_test
         self.fourier_converter = FourierConverter(beta)
 
-        self.kornia_tps = KorniaTPS(self.cfg)
+        # TPS
+        doc_size = (self.cfg.target_doc_w, self.cfg.target_doc_h)
+        grid_size = (self.cfg.grid_width, self.cfg.grid_height)
+        self.kornia_tps = KorniaTPS(doc_size, grid_size)
 
         # Losses
-        self.configure_crit()   
+        if self.cfg.train:
+            self.configure_crit()   
 
     def forward(self, x):
         """Forward function. Using for inference 
@@ -79,7 +81,8 @@ class DeWrapper(LightningModule):
                 normalized input image
         """
         coarse_mesh = self.coarse_transformer(x)
-        coarse_kernel_weight_, coarse_affine_weights_ = self.kornia_tps(coarse_mesh)
+        coarse_kernel_weight_, coarse_affine_weights_ = self.kornia_tps(coarse_mesh, 
+                                                                        im_size=(self.cfg.target_width, self.cfg.target_height))
         x_coarse = warp_image_tps(x, 
                                   coarse_mesh,
                                   coarse_kernel_weight_,
@@ -87,7 +90,8 @@ class DeWrapper(LightningModule):
         x_coarse = x_coarse[:, :, :self.cfg.target_doc_h, :self.cfg.target_doc_w]
         
         refine_mesh = self.refine_transformer(x_coarse)
-        refine_kernel_weight_, refine_affine_weights_ = self.kornia_tps(refine_mesh)
+        refine_kernel_weight_, refine_affine_weights_ = self.kornia_tps(refine_mesh,
+                                                                        im_size=(self.cfg.target_doc_w, self.cfg.target_doc_h))
         x_refine = warp_image_tps(x_coarse, 
                                   refine_mesh,
                                   refine_kernel_weight_,
@@ -157,25 +161,25 @@ class DeWrapper(LightningModule):
 
         # Fourier Converter
         coarse_mesh = self.coarse_transformer(hard_img)
-        coarse_kernel_weight_, coarse_affine_weights_ = self.kornia_tps(coarse_mesh)
+        coarse_kernel_weight_, coarse_affine_weights_ = self.kornia_tps(coarse_mesh, 
+                                                                        im_size=(self.cfg.target_width, self.cfg.target_height))
         x_coarse = warp_image_tps(soft_img, 
                                   coarse_mesh,
                                   coarse_kernel_weight_,
                                   coarse_affine_weights_)
         x_coarse = x_coarse[:, :, :self.cfg.target_doc_h, :self.cfg.target_doc_w]
-        del coarse_kernel_weight_, coarse_affine_weights_
         
         refine_mesh = self.refine_transformer(x_coarse)
-        refine_kernel_weight_, refine_affine_weights_ = self.kornia_tps(refine_mesh)
+        refine_kernel_weight_, refine_affine_weights_ = self.kornia_tps(refine_mesh,
+                                                                        im_size=(self.cfg.target_doc_w, self.cfg.target_doc_h))
         x_refine = warp_image_tps(x_coarse, 
                                   refine_mesh,
                                   refine_kernel_weight_,
                                   refine_affine_weights_)
-        del refine_kernel_weight_, refine_affine_weights_
 
-        x_fft_coarse_ = self.fourier_converter(x_coarse.cpu())
-        x_fft_refine_ = self.fourier_converter(x_refine.cpu())
-        ref_ = self.fourier_converter(reference.cpu())
+        x_fft_coarse_ = self.fourier_converter(x_coarse)
+        x_fft_refine_ = self.fourier_converter(x_refine)
+        ref_ = self.fourier_converter(reference)
         
         loss_coarse = self.crit_coarse(x_fft_coarse_, ref_.detach(), reduction='mean')
         loss_refine = self.crit_refine(x_fft_refine_, ref_.detach(), reduction='mean')
@@ -193,22 +197,18 @@ class DeWrapper(LightningModule):
                                        d1_mesh, 
                                        kernel_weight_1, 
                                        affine_weights_1)
-            del kernel_weight_1, affine_weights_1
 
             wraped_D1 = warp_image_tps(D2, 
                                        d2_mesh, 
                                        kernel_weight_2, 
                                        affine_weights_2)
-            del kernel_weight_2, affine_weights_2
 
-            loss_mutual = self.crit_mutual(wraped_D1.cpu(), D1.detach().cpu(), reduction='mean') + \
-                          self.crit_mutual(wraped_D2.cpu(), D2.detach().cpu(), reduction='mean')
+            loss_mutual = self.crit_mutual(wraped_D1, D1.detach(), reduction='mean') + \
+                          self.crit_mutual(wraped_D2, D2.detach(), reduction='mean')
             w = self.cfg.loss.mutual.weight
             loss_coarse += w * loss_mutual * 255.
         
         loss_ = loss_coarse + loss_refine
-
-        del D1, D2
         return {
             "coarse": loss_coarse,
             "refine": loss_refine,
@@ -232,13 +232,13 @@ class DeWrapper(LightningModule):
     
     def validation_step(self, batch, batch_idx):
         out = self.forward(batch["normal_img"])
-        ref_ = self.fourier_converter(batch["reference"].cpu())
+        ref_ = self.fourier_converter(batch["reference"])
 
-        loss = self.crit_coarse(out["x_converted"].cpu(), ref_.detach(), reduction='mean')
+        loss = self.crit_coarse(out["x_converted"].detach(), ref_.detach(), reduction='mean')
         self.val_loss.update(loss.item())
         
         # update and log metrics
-        self.log("val_loss", loss.item(), on_step=True, on_epoch=True, prog_bar=True)
+        self.log("val_loss", loss.item(), on_step=False, on_epoch=True, prog_bar=True)
         
         del batch
         return {"loss": loss}
@@ -259,10 +259,10 @@ class DeWrapper(LightningModule):
         try:
             stats = {
                 "epoch": "{}/{}".format(self.current_epoch, self.trainer.max_epochs),
-                "iter": "{}/{}".format(cur_iter + 1, self.trainer.num_training_batches),
+                # "iter": "{}/{}".format(cur_iter + 1, self.trainer.num_training_batches),
                 "train_loss": "%.4f"%(self.train_loss.compute().item()),
                 "val_loss": "%.4f"%(self.val_loss.compute().item()),
-                "time": "%.4f"%(self.timer.time_elapsed()-self.timer_last_iter),
+                # "time": "%.4f"%(self.timer.time_elapsed()-self.timer_last_iter),
                 "lr": self.trainer.optimizers[0].param_groups[0]['lr'],
                 "mem": int(np.ceil(mem_usage)),
             }

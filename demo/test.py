@@ -2,25 +2,30 @@ import sys
 sys.path.insert(1, ".")
 
 from omegaconf import DictConfig, OmegaConf
-from DeWrapper.models.utils.fourier_converter import FourierConverter
+from DeWrapper.models.de_wrapper import DeWrapper
 import cv2
-import torch
+import torch 
 
 from DeWrapper.utils import get_pylogger
 logger = get_pylogger()
 
 if __name__ == "__main__":
     cfg = OmegaConf.load("config/default.yaml")
-    fft = FourierConverter(0.008)
+    model = DeWrapper.load_from_checkpoint("weights/last.ckpt", map_location="cpu", cfg=cfg)
+    model.eval()
 
     cv2.namedWindow("img", cv2.WINDOW_NORMAL)  
     cv2.resizeWindow("img", 650, 1000)
-    img = cv2.imread("C:\\Users\\ADMIN\\Downloads\\Dataset\\WarpDoc\\train\\digital\\rotate\\0157.jpg")
+
+    img = cv2.imread("images/0000.jpg")
+    img = cv2.resize(img, (768, 1088))
     
-    img = img.transpose(2, 0, 1)[None]
+    img = img.transpose(2, 0, 1)[None] / 255.0
     img = torch.from_numpy(img)
 
-    img = fft(img.float(), False)
+    out = model(img)
+    img = out["x_converted"]
+
     img = img[0].cpu().numpy()
     img = img.transpose(1, 2, 0).astype("uint8")
 

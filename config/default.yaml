@@ -23,18 +23,18 @@ fourier_converter:
                     # ["cv2", "torch"]
 
 # size of target image
-target_width : 1024
-target_height: 1472
+target_width : 768
+target_height: 1088
 
 # size of target inside doc
-target_doc_w: 768
-target_doc_h: 1088
+target_doc_w: 480
+target_doc_h: 704
 
 # grid size
-grid_width : 25
-grid_height: 25
+grid_width : 9
+grid_height: 9
 
-train: True 
+train: False 
 
 ckpt_path: None
 
@@ -42,7 +42,7 @@ debug: True
 
 paths: 
     root_dir  : ${oc.env:PROJECT_ROOT}
-    data_dir  : C:/Users/ADMIN/Downloads/Dataset/WarpDoc
+    data_dir  : /content/WarpDoc
     log_dir   : ${paths.root_dir}/logs/
     output_dir: ${paths.root_dir}/checkpoints/
 
@@ -74,7 +74,7 @@ trainer:
     limit_train_batches: 1.0
     limit_val_batches: 1.0
     sync_batchnorm: null
-    strategy: ddp_find_unused_parameters_true 
+    strategy: auto 
 
 log_frequency: 100
 
@@ -96,13 +96,13 @@ solver:
     decay_gamma: 0.1
     layer_decay: null
     ZERO_WD_1D_PARAM: True
-    warmup_epochs: 5
-    weight_decay: 0.05
+    warmup_epochs: 3
+    weight_decay: 0.00005
     scheduler: "cosine"
     apply_linear_scaling: True
 
 dataloader:
-    batch: 32
+    batch: 2
     num_workers: 2
     pin_memory: True
 
@@ -132,7 +132,7 @@ callbacks:
     model_summary:
         max_depth: 1
 
-    rich_progress_bar:
+    tqdm_progress_bar:
         refresh_rate: 1
 
     learning_rate_monitor:

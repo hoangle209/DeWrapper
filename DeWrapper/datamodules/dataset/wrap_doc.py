@@ -2,7 +2,7 @@ import os
 import numpy as np
 import torch
 import torchvision.transforms as T
-import torchvision.transforms.v2 as T_v2
+from torchvision.transforms import v2
 from PIL import Image
 from torch.utils.data import Dataset
 import glob
@@ -81,24 +81,16 @@ class WrapDocDataset(Dataset):
         ]
 
         # Blur
-        p_blur = 1 - self.cfg.dataset.blur
-        blur = [
-            GaussianBlur(prob=p_blur), 
-            # MotionBlur(prob=p_blur), 
-            DefocusBlur(prob=p_blur), 
-            ZoomBlur(prob=p_blur), 
-            GlassBlur(prob=p_blur)
-        ]
+        blur = v2.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5.))
 
         # Geometry
         p_geometry = 1 - self.cfg.dataset.geometry
         geometry = [
-            T.RandomRotation((-30, 30), expand=True), 
-            Perspective(prob=p_geometry), 
-            TranslateX(prob=p_geometry), 
-            TranslateY(prob=p_geometry)
+            v2.RandomRotation((-30, 30)), 
+            v2.RandomPerspective(distortion_scale=0.3, p=p_geometry), 
         ]
 
+        # Reference
         ref_aug = [
             T.Resize((self.target_doc_h, self.target_doc_w)),
             T.ToTensor(),
@@ -107,7 +99,7 @@ class WrapDocDataset(Dataset):
         
         self.aug = {
             "resize": resize,
-            "to_tensor_and_norm": to_tensor_and_norm,
+            "to_tensor_and_norm": T.Compose(to_tensor_and_norm),
             "reference": T.Compose(ref_aug), 
             "geometry": T.Compose(geometry),
             "blur": blur,
@@ -115,41 +107,37 @@ class WrapDocDataset(Dataset):
 
     def apply_aug_(self, img, ref):
         input = {}
+        img = self.aug["resize"](img)
+
         if self.train:
-            img_soft = self.aug["geometry"](self.aug["resize"](img))   
+            img_soft = self.aug["geometry"](img) 
             img_hard = img_soft
 
-            # brightness | constrast | shaepness
+            # brightness | constrast | sharpness
             if random.random() > (1 - self.cfg.dataset.brightness):
                 brightness_factor = random.uniform(0.9, 1.2)
-                img_hard = T.adjust_brightness(img_hard, brightness_factor)
+                img_hard = T.functional.adjust_brightness(img_hard, brightness_factor)
             
             if random.random() > (1 - self.cfg.dataset.constrast):
                 constrast_factor = random.uniform(0.9, 1.2)
-                img_hard = T.adjust_constrast(img_hard, constrast_factor)
+                img_hard = T.functional.adjust_contrast(img_hard, constrast_factor)
 
             if random.random() > (1 - self.cfg.dataset.sharpness):
                 sharpness_factor = random.uniform(1.0, 1.3)
-                img_hard = T.adjust_constrast(img_hard, sharpness_factor)
+                img_hard = T.functional.adjust_sharpness(img_hard, sharpness_factor)
 
             # blur
-            blur_idx = random.randint(0, len(self.aug["blur"]))
-            img_hard = self.aug["blur"][blur_idx](img_hard)
+            if random.random() > (1 - self.cfg.dataset.blur):
+                img_hard = self.aug["blur"](img_hard)
 
             input |= {
                 "soft_img": self.aug["to_tensor_and_norm"](img_soft), 
-                "hard_img": self.aug["to_tensor_and_norm"](img_hard)}
+                "hard_img": self.aug["to_tensor_and_norm"](img_hard)
+            }
 
         input |= {
-            "normal_img": self.aug["to_tensor_and_norm"](self.aug["resize"](img)),
-            "reference" : self.aug["ref"](ref),
+            "normal_img": self.aug["to_tensor_and_norm"](img),
+            "reference" : self.aug["reference"](ref),
         }
     
         return input 
-    
-
-
-
-
-
-

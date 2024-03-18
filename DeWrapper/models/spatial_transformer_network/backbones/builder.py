@@ -8,8 +8,6 @@ logger = get_pylogger()
 
 
 def builder(cfg):
-    logger.info(f"      - Backbone <{cfg.backbone.type}>")
-
     if cfg.backbone.type[0:6] == "resnet":
         backbone = resnet_builder(cfg.backbone.type)
     elif cfg.backbone.type == "basic_encoder":
