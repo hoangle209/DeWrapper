@@ -14,27 +14,29 @@ class FDRHead(nn.Module):
 
         self.cfg = cfg
         mid_dim = 128
-        mid_dim_2 = 128
-        en_dim = 128
+        mid_dim_2 = 256
+        en_dim = 512
         self.num_mid_dilate_cv = 3
         self.num_end_dilate_cv = 2
 
         in_channel = cfg.backbone.out_channel
-        for i in range(3):
+
+        for i in range(self.num_mid_dilate_cv):
             setattr(
                 self, f"dilated_cv{i+1}", 
-                Conv(in_channel, mid_dim, d=2**(i+1))
+                Conv(in_channel, mid_dim, d=(i+1))
                 )
+            
         self.cv1 = Conv(mid_dim * 3, mid_dim_2)
         self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        for i in range(2):
+        for i in range(self.num_end_dilate_cv):
             setattr(
                 self, f"dilated_cv{i+4}", 
-                Conv(mid_dim_2, mid_dim_2, d=2**(i+1))
+                Conv(mid_dim_2, mid_dim_2, d=(i+1))
                 )
+            
         self.cv2 = Conv(mid_dim_2 * 2, en_dim)
-
         self.pool2 = nn.AdaptiveAvgPool2d(1)
         self.drop = nn.Dropout(p=0.0, inplace=True)
         self.linear = nn.Linear(en_dim, 

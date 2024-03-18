@@ -34,9 +34,9 @@ target_doc_h: 704
 grid_width : 9
 grid_height: 9
 
-train: False 
+train: True 
 
-ckpt_path: None
+ckpt_path: null
 
 debug: True
 
@@ -79,14 +79,17 @@ trainer:
 log_frequency: 100
 
 loss: 
-    coarse: "L1"
-    refine: "L1"
+    coarse: 
+        type: "ssim"
+        kwargs: null
+    refine: 
+        type: "ssim"
+        kwargs: null
     mutual: 
         enable: True
-        type  : "L1"
-        m1    : 1.0
-        m2    : 1.0
-        weight: 0.5 # weight to balance
+        type  : "ssim"
+        kwargs: null
+        weight: 0.5 
 
 solver:
     name: "AdamW"

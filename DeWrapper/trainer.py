@@ -89,6 +89,15 @@ def train(cfg: DictConfig):
         logger.info("Starting training !!!")
         trainer.fit(model=model, datamodule=datamodule, ckpt_path=checkpoint_path) 
 
+
+import argparse
+parser = argparse.ArgumentParser(
+                    prog='Trainer',
+                    description='Trainer Augments')
+
+parser.add_argument("--config", type=str, default="config/default.yaml")
+
 if __name__ == "__main__":
-    config = OmegaConf.load("config/default.yaml")
+    args = parser.parse_args()
+    config = OmegaConf.load(args.config)
     train(config)

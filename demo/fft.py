@@ -20,6 +20,7 @@ if __name__ == "__main__":
     
     img = img.transpose(2, 0, 1)[None]
     img = torch.from_numpy(img)
+    print(isinstance(img, torch.Tensor))
 
     img = fft(img.float(), False)
     img = img[0].cpu().numpy()

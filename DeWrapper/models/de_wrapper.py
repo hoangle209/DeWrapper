@@ -1,16 +1,17 @@
 import torch
-import torch.nn.functional as F
+import torch.nn as nn
 from lightning import LightningModule
-from lightning.pytorch.callbacks import Timer
 from torchmetrics import MeanMetric
-from kornia.geometry.transform import remap, warp_image_tps
+from kornia.geometry.transform import warp_image_tps
 from kornia.augmentation import RandomThinPlateSpline
+from omegaconf import OmegaConf
 import math
 import numpy as np
 
 from DeWrapper.models import STN
 from DeWrapper.models.utils.fourier_converter import FourierConverter
 from DeWrapper.models.utils.thin_plate_spline import KorniaTPS
+from DeWrapper.models.losses.ssim import SSIM, MS_SSIM
 
 from DeWrapper.utils import get_pylogger
 logger = get_pylogger()
@@ -109,28 +110,38 @@ class DeWrapper(LightningModule):
 
     def configure_crit(self):
         loss_type = {
-            "L1"       : F.l1_loss,
-            "L2"       : F.mse_loss,
-            "smooth_L1": F.smooth_l1_loss
+            "L1"       : nn.L1Loss,
+            "L2"       : nn.MSELoss,
+            "smooth_L1": nn.SmoothL1Loss,
+            "ssim"     : SSIM,
+            "ms-ssim"  : MS_SSIM
         }
         
         # Coarse loss
-        crit_coarse = self.cfg.loss.coarse
+        crit_coarse = self.cfg.loss.coarse.type
         if crit_coarse in loss_type:
-            self.crit_coarse = loss_type[crit_coarse]
+            kwargs = {}
+            if self.cfg.loss.coarse.get("kwargs") is not None:
+                kwargs = OmegaConf.to_object(self.cfg.loss.coarse.kwargs)
+            
+            self.crit_coarse = loss_type[crit_coarse](**kwargs)
+
         else:
             logger.warning(f"Coarse loss type {crit_coarse} is not implemented.\
                             Using L1 loss as default...")
-            self.crit_coarse = loss_type["L1"]
+            self.crit_coarse = loss_type["L1"]()
 
         # Refinement loss
-        crit_refine = self.cfg.loss.coarse
+        crit_refine = self.cfg.loss.refine.type
         if crit_refine in loss_type:
-            self.crit_refine = loss_type[crit_refine]
+            kwargs = {}
+            if self.cfg.loss.refine.get("kwargs") is not None:
+                kwargs = OmegaConf.to_object(self.cfg.loss.refine.kwargs)
+            self.crit_refine = loss_type[crit_refine](**kwargs)
         else:
             logger.warning(f"Refinement loss type {crit_refine} is not implemented.\
                             Using L1 loss as default...")
-            self.crit_refine = loss_type["L1"]
+            self.crit_refine = loss_type["L1"]()
 
         # Mutual loss
         if self.cfg.loss.mutual.enable:
@@ -139,11 +150,14 @@ class DeWrapper(LightningModule):
             """
             crit_mutual = self.cfg.loss.mutual.type
             if crit_mutual in loss_type:
-                self.crit_mutual = loss_type[crit_mutual]
+                kwargs = {}
+                if self.cfg.loss.mutual.get("kwargs") is not None:
+                    kwargs = OmegaConf.to_object(self.cfg.loss.mutual.kwargs)
+                self.crit_mutual = loss_type[crit_mutual](**kwargs)
             else:
-                logger.warning(f"Refinement loss type {crit_mutual} is not implemented.\
+                logger.warning(f"Mutual loss type {crit_mutual} is not implemented.\
                                 Using L1 loss as default...")
-                self.crit_mutual = loss_type["L1"]
+                self.crit_mutual = loss_type["L1"]()
 
     def on_train_start(self):
         torch.cuda.empty_cache()
@@ -177,12 +191,12 @@ class DeWrapper(LightningModule):
                                   refine_kernel_weight_,
                                   refine_affine_weights_)
 
-        x_fft_coarse_ = self.fourier_converter(x_coarse)
-        x_fft_refine_ = self.fourier_converter(x_refine)
-        ref_ = self.fourier_converter(reference)
+        x_fft_coarse_ = self.fourier_converter(x_coarse.cpu())
+        x_fft_refine_ = self.fourier_converter(x_refine.cpu())
+        ref_ = self.fourier_converter(reference.cpu())
         
-        loss_coarse = self.crit_coarse(x_fft_coarse_, ref_.detach(), reduction='mean')
-        loss_refine = self.crit_refine(x_fft_refine_, ref_.detach(), reduction='mean')
+        loss_coarse = self.crit_coarse(x_fft_coarse_.cpu(), ref_.detach().cpu())
+        loss_refine = self.crit_refine(x_fft_refine_.cpu(), ref_.detach().cpu())
 
         if self.cfg.loss.mutual.enable:
             D1 = random_tps(normal_img)
@@ -203,8 +217,8 @@ class DeWrapper(LightningModule):
                                        kernel_weight_2, 
                                        affine_weights_2)
 
-            loss_mutual = self.crit_mutual(wraped_D1, D1.detach(), reduction='mean') + \
-                          self.crit_mutual(wraped_D2, D2.detach(), reduction='mean')
+            loss_mutual = self.crit_mutual(wraped_D1.cpu(), D1.detach().cpu()) + \
+                          self.crit_mutual(wraped_D2.cpu(), D2.detach().cpu())
             w = self.cfg.loss.mutual.weight
             loss_coarse += w * loss_mutual * 255.
         
@@ -234,7 +248,7 @@ class DeWrapper(LightningModule):
         out = self.forward(batch["normal_img"])
         ref_ = self.fourier_converter(batch["reference"])
 
-        loss = self.crit_coarse(out["x_converted"].detach(), ref_.detach(), reduction='mean')
+        loss = self.crit_coarse(out["x_converted"].detach(), ref_.detach())
         self.val_loss.update(loss.item())
         
         # update and log metrics
@@ -244,37 +258,24 @@ class DeWrapper(LightningModule):
         return {"loss": loss}
     
     def on_validation_epoch_end(self):
-        self.log_iter_stats(self.cfg.log_frequency)
+        self.log_iter_stats()
 
-    def log_iter_stats(self, cur_iter=1): # TODO
+    def log_iter_stats(self): # TODO
         def gpu_mem_usage():
             """Computes the GPU memory usage for the current device (MB)."""
             mem_usage_bytes = torch.cuda.max_memory_allocated()
             return mem_usage_bytes / 1024 / 1024
-        
-        if(cur_iter%self.cfg.log_frequency != 0):
-            return 0
-        
         mem_usage = gpu_mem_usage()
-        try:
-            stats = {
-                "epoch": "{}/{}".format(self.current_epoch, self.trainer.max_epochs),
-                # "iter": "{}/{}".format(cur_iter + 1, self.trainer.num_training_batches),
-                "train_loss": "%.4f"%(self.train_loss.compute().item()),
-                "val_loss": "%.4f"%(self.val_loss.compute().item()),
-                # "time": "%.4f"%(self.timer.time_elapsed()-self.timer_last_iter),
-                "lr": self.trainer.optimizers[0].param_groups[0]['lr'],
-                "mem": int(np.ceil(mem_usage)),
-            }
-            self.timer_last_iter = self.timer.time_elapsed()
-        except:
-            self.timer = Timer()
-            self.timer_last_iter = self.timer.time_elapsed()
-            stats = {}
-            
+
+        stats = {
+            "epoch": "{}/{}".format(self.current_epoch, self.trainer.max_epochs),
+            "train_loss": "%.4f"%(self.train_loss.compute().item()),
+            "val_loss": "%.4f"%(self.val_loss.compute().item()),
+            "lr": self.trainer.optimizers[0].param_groups[0]['lr'],
+            "mem": int(np.ceil(mem_usage)),
+        }
         self.train_loss.reset()
         self.val_loss.reset()
-        
         logger.info(stats)
 
     def configure_optimizers(self):
