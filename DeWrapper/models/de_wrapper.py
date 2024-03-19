@@ -11,7 +11,7 @@ import numpy as np
 from DeWrapper.models import STN
 from DeWrapper.models.utils.fourier_converter import FourierConverter
 from DeWrapper.models.utils.thin_plate_spline import KorniaTPS
-from DeWrapper.models.losses.ssim import SSIM, MS_SSIM
+from DeWrapper.models.losses.create_loss import Loss
 
 from DeWrapper.utils import get_pylogger
 logger = get_pylogger()
@@ -109,55 +109,10 @@ class DeWrapper(LightningModule):
 
 
     def configure_crit(self):
-        loss_type = {
-            "L1"       : nn.L1Loss,
-            "L2"       : nn.MSELoss,
-            "smooth_L1": nn.SmoothL1Loss,
-            "ssim"     : SSIM,
-            "ms-ssim"  : MS_SSIM
-        }
-        
-        # Coarse loss
-        crit_coarse = self.cfg.loss.coarse.type
-        if crit_coarse in loss_type:
-            kwargs = {}
-            if self.cfg.loss.coarse.get("kwargs") is not None:
-                kwargs = OmegaConf.to_object(self.cfg.loss.coarse.kwargs)
-            
-            self.crit_coarse = loss_type[crit_coarse](**kwargs)
-
-        else:
-            logger.warning(f"Coarse loss type {crit_coarse} is not implemented.\
-                            Using L1 loss as default...")
-            self.crit_coarse = loss_type["L1"]()
-
-        # Refinement loss
-        crit_refine = self.cfg.loss.refine.type
-        if crit_refine in loss_type:
-            kwargs = {}
-            if self.cfg.loss.refine.get("kwargs") is not None:
-                kwargs = OmegaConf.to_object(self.cfg.loss.refine.kwargs)
-            self.crit_refine = loss_type[crit_refine](**kwargs)
-        else:
-            logger.warning(f"Refinement loss type {crit_refine} is not implemented.\
-                            Using L1 loss as default...")
-            self.crit_refine = loss_type["L1"]()
-
-        # Mutual loss
+        self.crit_coarse = Loss(self.cfg.loss.coarse)
+        self.crit_refine = Loss(self.cfg.loss.refine)
         if self.cfg.loss.mutual.enable:
-            """Document with two different geometric distortions can be 
-            mutually transformed to each other if their mesh grids are predicted correctly.
-            """
-            crit_mutual = self.cfg.loss.mutual.type
-            if crit_mutual in loss_type:
-                kwargs = {}
-                if self.cfg.loss.mutual.get("kwargs") is not None:
-                    kwargs = OmegaConf.to_object(self.cfg.loss.mutual.kwargs)
-                self.crit_mutual = loss_type[crit_mutual](**kwargs)
-            else:
-                logger.warning(f"Mutual loss type {crit_mutual} is not implemented.\
-                                Using L1 loss as default...")
-                self.crit_mutual = loss_type["L1"]()
+            self.crit_mutual = Loss(self.cfg.loss.mutual)
 
     def on_train_start(self):
         torch.cuda.empty_cache()
@@ -170,14 +125,13 @@ class DeWrapper(LightningModule):
     def step(self, batch):
         normal_img = batch["normal_img"]
         soft_img   = batch["soft_img"]
-        hard_img   = batch["hard_img"]
         reference  = batch["reference"] # ground-truth
 
         # Fourier Converter
-        coarse_mesh = self.coarse_transformer(hard_img)
+        coarse_mesh = self.coarse_transformer(soft_img)
         coarse_kernel_weight_, coarse_affine_weights_ = self.kornia_tps(coarse_mesh, 
                                                                         im_size=(self.cfg.target_width, self.cfg.target_height))
-        x_coarse = warp_image_tps(soft_img, 
+        x_coarse = warp_image_tps(normal_img, 
                                   coarse_mesh,
                                   coarse_kernel_weight_,
                                   coarse_affine_weights_)
@@ -279,53 +233,12 @@ class DeWrapper(LightningModule):
         logger.info(stats)
 
     def configure_optimizers(self):
-        """Choose what optimizers and learning-rate schedulers to use in your optimization.
-        Normally you'd need one. But in the case of GANs or similar you might have multiple.
-
-        Examples:
-            https://pytorch-lightning.readthedocs.io/en/latest/common/lightning_module.html#configure-optimizers
-        """
-
-        # linear learning rate scaling for multi-gpu
-        if(self.trainer.num_devices * self.trainer.num_nodes>1 and self.cfg.solver.apply_linear_scaling):
-            self.lr_scaler = self.trainer.num_devices * self.trainer.num_nodes * self.trainer.accumulate_grad_batches * self.cfg.dataloader.batch / 256
-        else:
-            self.lr_scaler = 1
-        logger.info("num_devices: {}, num_nodes: {}, accumulate_grad_batches: {}, train_batch: {}".format(self.trainer.num_devices, self.trainer.num_nodes, self.trainer.accumulate_grad_batches, self.cfg.dataloader.batch))
-        logger.info("Linear LR scaling factor: {}".format(self.lr_scaler))
-        
-        if(self.cfg.solver.layer_decay is not None):
-            optim_params = self.get_param_groups()
-        else:
-            optim_params = [{'params': filter(lambda p: p.requires_grad, self.parameters()), 'lr': self.cfg.solver.lr * self.lr_scaler}]
-        
-        if(self.cfg.solver.name=="AdamW"):
-            optimizer = torch.optim.AdamW(params=optim_params, weight_decay=self.cfg.solver.weight_decay, betas=(0.9, 0.95))
-        elif(self.cfg.solver.name=="lion"):
-            from lion_pytorch import Lion
-            optimizer = Lion(params=optim_params, weight_decay=self.cfg.solver.weight_decay, betas=(0.9, 0.99))
-        elif(self.cfg.solver.name=="SGD"):
-            optimizer = torch.optim.SGD(params=optim_params, momentum=self.cfg.solver.momentum, weight_decay=self.cfg.solver.weight_decay)
-        else:
-            raise NotImplementedError("Unknown solver : " + self.cfg.solver.name)
-
-        def warm_start_and_cosine_annealing(epoch):
-            if epoch < self.cfg.solver.warmup_epochs:
-                lr = (epoch+1) / self.cfg.solver.warmup_epochs
-            else:
-                lr = 0.5 * (1. + math.cos(math.pi * ((epoch+1) - self.cfg.solver.warmup_epochs) / (self.trainer.max_epochs - self.cfg.solver.warmup_epochs )))
-            return lr
-
-        if(self.cfg.solver.scheduler == "cosine"):
-            scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=[warm_start_and_cosine_annealing for _ in range(len(optim_params))])
-        else:
-            scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, self.cfg.solver.decay_steps, gamma=self.cfg.solver.decay_gamma)
-
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-4, weight_decay=5e-4, amsgrad=True)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="min", factor=0.5, patience=5, verbose=True
+        )
         return {
             "optimizer": optimizer,
-            "lr_scheduler": {
-                "scheduler": scheduler,
-                "interval" : "epoch",
-                'frequency': 1,
-            }
+            "lr_scheduler": scheduler,
+            "monitor": "val_loss",
         }

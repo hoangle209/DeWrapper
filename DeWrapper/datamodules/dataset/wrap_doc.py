@@ -90,6 +90,8 @@ class WrapDocDataset(Dataset):
             v2.RandomPerspective(distortion_scale=0.3, p=p_geometry), 
         ]
 
+        color_jiter = T.ColorJitter(0.2, 0.2, 0.2, 0.2)
+
         # Reference
         ref_aug = [
             T.Resize((self.target_doc_h, self.target_doc_w)),
@@ -103,6 +105,7 @@ class WrapDocDataset(Dataset):
             "reference": T.Compose(ref_aug), 
             "geometry": T.Compose(geometry),
             "blur": blur,
+            "color_jiter": color_jiter
         }
 
     def apply_aug_(self, img, ref):
@@ -110,29 +113,9 @@ class WrapDocDataset(Dataset):
         img = self.aug["resize"](img)
 
         if self.train:
-            img_soft = self.aug["geometry"](img) 
-            img_hard = img_soft
-
-            # brightness | constrast | sharpness
-            if random.random() > (1 - self.cfg.dataset.brightness):
-                brightness_factor = random.uniform(0.9, 1.2)
-                img_hard = T.functional.adjust_brightness(img_hard, brightness_factor)
-            
-            if random.random() > (1 - self.cfg.dataset.constrast):
-                constrast_factor = random.uniform(0.9, 1.2)
-                img_hard = T.functional.adjust_contrast(img_hard, constrast_factor)
-
-            if random.random() > (1 - self.cfg.dataset.sharpness):
-                sharpness_factor = random.uniform(1.0, 1.3)
-                img_hard = T.functional.adjust_sharpness(img_hard, sharpness_factor)
-
-            # blur
-            if random.random() > (1 - self.cfg.dataset.blur):
-                img_hard = self.aug["blur"](img_hard)
-
+            img_soft = self.aug["color_jiter"](img)
             input |= {
                 "soft_img": self.aug["to_tensor_and_norm"](img_soft), 
-                "hard_img": self.aug["to_tensor_and_norm"](img_hard)
             }
 
         input |= {

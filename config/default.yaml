@@ -19,8 +19,6 @@ refine_module:
 fourier_converter:
     beta_train: 0.06
     beta_test : 0.008
-    platform  : "cv2" # platform to excute Fourier transform
-                    # ["cv2", "torch"]
 
 # size of target image
 target_width : 768
@@ -81,28 +79,21 @@ log_frequency: 100
 loss: 
     coarse: 
         type: "ssim"
-        kwargs: null
+        kwargs:
+            data_range: 255.0
+            size_average: False
     refine: 
         type: "ssim"
-        kwargs: null
+        kwargs:
+            data_range: 255.0
+            size_average: False
     mutual: 
         enable: True
         type  : "ssim"
-        kwargs: null
+        kwargs:
+            data_range: 255.0
+            size_average: False
         weight: 0.5 
-
-solver:
-    name: "AdamW"
-    lr: 0.0001
-    momentum: 0.9
-    decay_steps: [15,20]
-    decay_gamma: 0.1
-    layer_decay: null
-    ZERO_WD_1D_PARAM: True
-    warmup_epochs: 3
-    weight_decay: 0.00005
-    scheduler: "cosine"
-    apply_linear_scaling: True
 
 dataloader:
     batch: 2
@@ -110,9 +101,9 @@ dataloader:
     pin_memory: True
 
 dataset:
-    brightness: 0.3
-    constrast: 0.3
-    sharpness: 0.3
+    brightness: 0.25
+    constrast: 0.25
+    sharpness: 0.25
     blur: 0.4
     geometry: 0.25
 

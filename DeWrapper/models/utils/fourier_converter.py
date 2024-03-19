@@ -1,8 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.fft as fft
-import torchvision.transforms as transforms
-import kornia.color as color 
 
 
 class FourierConverter(nn.Module):
@@ -31,7 +29,7 @@ class FourierConverter(nn.Module):
 
         b, c, h, w = x_fft.size()
         blank = torch.full((b, c, h, w), fill_value=255.0).to(x.device)
-        blank_fft = fft.ifft2(blank)
+        blank_fft = fft.fft2(blank)
 
         masked_w = int(self.beta * w)
         masked_h = int(self.beta * h)
