@@ -1,4 +1,3 @@
-import torch
 import torch.nn as nn
 import torch.fft as fft
 
@@ -23,26 +22,20 @@ class FourierConverter(nn.Module):
             is_normalized, bool, default=True
                 whether input Tensor is normalize
         """
-        x_denormalize = x * 255. if is_normalized \
-                        else x 
-        x_fft = fft.fft2(x_denormalize) 
+        x_denormalize = x * 255. if is_normalized else x 
+        x_fft = fft.fft2(x_denormalize, dim=(-2, -1)) 
 
-        b, c, h, w = x_fft.size()
-        blank = torch.full((b, c, h, w), fill_value=255.0).to(x.device)
-        blank_fft = fft.fft2(blank)
-
+        _, _, h, w = x_fft.size()
         masked_w = int(self.beta * w)
         masked_h = int(self.beta * h)
         cy, cx = int(h//2), int(w//2)
-        mask = torch.ones(b, c, h, w).to(x.device)
-        mask[:, :, 
+
+        x_fft[:, :, 
              -masked_h + cy : masked_h + cy,
              -masked_w + cx : masked_w + cx] = 0.0
-
-        x_fft_high_freq = x_fft * mask + blank_fft * (1. - mask)
         
         # shift the origin to the beginning of the vector (top-left in 2D case)
         # x_ishift = fft.ifftshift(x_fft_high_freq)
-        x_ifft = fft.ifft2(x_fft_high_freq)
+        x_ifft = fft.ifft2(x_fft, dim=(-2, -1))
 
-        return x_ifft.abs() # return image back
+        return x_ifft.real # return image back

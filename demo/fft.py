@@ -11,11 +11,11 @@ logger = get_pylogger()
 
 if __name__ == "__main__":
     cfg = OmegaConf.load("config/default.yaml")
-    fft = FourierConverter(0.008)
+    fft = FourierConverter(0.08)
 
     # cv2.namedWindow("img", cv2.WINDOW_NORMAL)  
     # # cv2.resizeWindow("img", 650, 1000)
-    img = cv2.imread("WarpDoc/train/image/curved/0000.jpg")
+    img = cv2.imread("0000.jpg")
     label = [593,697,2500,3168]
     x1, y1, x2, y2 = label
 
@@ -31,5 +31,5 @@ if __name__ == "__main__":
 
     print(img.shape)
 
-    cv2.imwrite("images/img.jpg", img)
-    # cv2.waitKey(0)
+    cv2.imshow("images/img.jpg", img)
+    cv2.waitKey(0)

@@ -1,17 +1,10 @@
-import os
-import numpy as np
 import torch
 import torchvision.transforms as T
-from torchvision.transforms import v2
+import torchvision.transforms.v2 as v2
 from PIL import Image
 from torch.utils.data import Dataset
 import glob
 import random
-
-from DeWrapper.datamodules.augmentation.blur import GaussianBlur, MotionBlur, DefocusBlur, ZoomBlur, GlassBlur
-from DeWrapper.datamodules.augmentation.geometry import Perspective, TranslateX, TranslateY
-from DeWrapper.utils import get_pylogger
-logger = get_pylogger(__name__)
 
 DEFAULT_MEAN = [0., 0., 0.]
 DEFAULT_STD  = [1., 1., 1.]
@@ -43,10 +36,7 @@ class WrapDocDataset(Dataset):
         for e in self.ext:
             self.img_list.extend(glob.glob(f"{datapath}/{_t}/image/**/{e}", recursive=True))
 
-        self.target_w = self.cfg.target_width
-        self.target_h = self.cfg.target_height
-        self.target_doc_w = self.cfg.target_doc_w
-        self.target_doc_h = self.cfg.target_doc_h
+        self.target_w, self.target_h = self.cfg.target_size()
 
         self.configure_aug()
     
@@ -91,18 +81,10 @@ class WrapDocDataset(Dataset):
         ]
 
         color_jiter = T.ColorJitter(0.2, 0.2, 0.2, 0.2)
-
-        # Reference
-        ref_aug = [
-            T.Resize((self.target_doc_h, self.target_doc_w)),
-            T.ToTensor(),
-            T.Normalize(mean=DEFAULT_MEAN, std=DEFAULT_STD)
-        ]
         
         self.aug = {
             "resize": resize,
             "to_tensor_and_norm": T.Compose(to_tensor_and_norm),
-            "reference": T.Compose(ref_aug), 
             "geometry": T.Compose(geometry),
             "blur": blur,
             "color_jiter": color_jiter
@@ -111,16 +93,13 @@ class WrapDocDataset(Dataset):
     def apply_aug_(self, img, ref):
         input = {}
         img = self.aug["resize"](img)
-
-        if self.train:
-            img_soft = self.aug["color_jiter"](img)
-            input |= {
-                "soft_img": self.aug["to_tensor_and_norm"](img_soft), 
-            }
+        if self.train: 
+            if random.random() > (1 - self.cfg.dataset.color_jiter):
+                img = self.aug["color_jiter"](img)
 
         input |= {
-            "normal_img": self.aug["to_tensor_and_norm"](img),
-            "reference" : self.aug["reference"](ref),
+            "img"       : self.aug["to_tensor_and_norm"](img),
+            "reference" : self.aug["to_tensor_and_norm"](self.aug["resize"](ref)),
         }
     
         return input 

@@ -1,0 +1,17 @@
+coarse_module:
+  backbone: 
+    type  : "resnet50"
+  head:
+    type: "FDRHead"
+
+# size of target image
+target_size: [768, 1088]
+
+# grid size
+grid_size: [9, 9]
+
+train: True 
+
+ckpt_path: null
+
+debug: True

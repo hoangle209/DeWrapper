@@ -10,16 +10,16 @@ class KorniaTPS(nn.Module):
 
         doc_w, doc_h = target
         grid_w, grid_h = grid_size 
-        self.x = torch.linspace(0, doc_w - 1, steps=grid_w) 
-        self.y = torch.linspace(0, doc_h - 1, steps=grid_h)
+        self.x = torch.linspace(0, doc_w - 1, steps=grid_w) / doc_w * 2 - 1
+        self.y = torch.linspace(0, doc_h - 1, steps=grid_h) / doc_h * 2 - 1
+
+        Y, X = torch.meshgrid(self.y, self.x, indexing='ij')
+        self.target_control_points = torch.cat([X.reshape(-1, 1), Y.reshape(-1, 1)], dim=1) # (N, 2)
     
-    def forward(self, control_points, target_points=None, im_size=None):
+    def forward(self, control_points, target_points=None):
         if target_points is None:
             B, N, _ = control_points.size()
-            w, h = im_size
-            Y, X = torch.meshgrid(self.y / h*2 - 1, self.x / w*2 - 1, indexing='ij')
-            target_control_points = torch.cat([X.reshape(-1, 1), Y.reshape(-1, 1)], dim=1) # (N, 2)
-            target_points = target_control_points.expand(B, N, 2).to(control_points.device)
+            target_points = self.target_control_points.expand(B, N, 2).to(control_points.device)
 
         kernel_weight, affine_weights = get_tps_transform(target_points, control_points)
         return kernel_weight, affine_weights

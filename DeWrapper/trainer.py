@@ -2,20 +2,16 @@ import sys
 sys.path.insert(1, ".")
 
 import os
-from typing import List, Optional, Tuple
+from typing import List
 
-import lightning as L
 import pyrootutils
-import submitit
-import torch
-from lightning import Callback, LightningDataModule, LightningModule, Trainer
+from lightning import Callback,  Trainer
 from lightning.pytorch.loggers import Logger
 from omegaconf import OmegaConf, DictConfig
 
 from DeWrapper.models import DeWrapper
 from DeWrapper.datamodules.datamodule import WrapDocDatamodule
 from DeWrapper.utils.instantiate import instantiate_callbacks, instantiate_loggers
-from DeWrapper.utils.ema_checkpoints import EMACheckpoint
 from DeWrapper.utils import get_pylogger
 logger = get_pylogger(__name__)
 

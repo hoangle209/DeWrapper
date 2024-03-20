@@ -1,11 +1,8 @@
 import torch
-import torch.nn as nn
 from lightning import LightningModule
 from torchmetrics import MeanMetric
 from kornia.geometry.transform import warp_image_tps
 from kornia.augmentation import RandomThinPlateSpline
-from omegaconf import OmegaConf
-import math
 import numpy as np
 
 from DeWrapper.models import STN
@@ -16,7 +13,7 @@ from DeWrapper.models.losses.create_loss import Loss
 from DeWrapper.utils import get_pylogger
 logger = get_pylogger()
 
-random_tps = RandomThinPlateSpline(scale=0.25, p=1.0, keepdim=True)
+random_tps = RandomThinPlateSpline(scale=0.15, p=1.0, keepdim=True)
 
 class DeWrapper(LightningModule):
     """
@@ -49,12 +46,12 @@ class DeWrapper(LightningModule):
         self.best_val_acc = 0
 
         # Models
-        self.cfg.coarse_module.grid_width = self.cfg.grid_width
-        self.cfg.coarse_module.grid_height = self.cfg.grid_height
+        self.cfg.coarse_module.grid_width = self.cfg.grid_size[0]
+        self.cfg.coarse_module.grid_height = self.cfg.grid_size[1]
         self.coarse_transformer = STN(self.cfg.coarse_module)
 
-        self.cfg.refine_module.grid_width = self.cfg.grid_width
-        self.cfg.refine_module.grid_height = self.cfg.grid_height
+        self.cfg.refine_module.grid_width = self.cfg.grid_size[0]
+        self.cfg.refine_module.grid_height = self.cfg.grid_size[1]
         self.refine_transformer = STN(self.cfg.refine_module)
 
         # Fourier
@@ -65,9 +62,7 @@ class DeWrapper(LightningModule):
         self.fourier_converter = FourierConverter(beta)
 
         # TPS
-        doc_size = (self.cfg.target_doc_w, self.cfg.target_doc_h)
-        grid_size = (self.cfg.grid_width, self.cfg.grid_height)
-        self.kornia_tps = KorniaTPS(doc_size, grid_size)
+        self.kornia_tps = KorniaTPS(self.cfg.target_size, self.cfg.grid_size)
 
         # Losses
         if self.cfg.train:
@@ -82,17 +77,14 @@ class DeWrapper(LightningModule):
                 normalized input image
         """
         coarse_mesh = self.coarse_transformer(x)
-        coarse_kernel_weight_, coarse_affine_weights_ = self.kornia_tps(coarse_mesh, 
-                                                                        im_size=(self.cfg.target_width, self.cfg.target_height))
+        coarse_kernel_weight_, coarse_affine_weights_ = self.kornia_tps(coarse_mesh)
         x_coarse = warp_image_tps(x, 
                                   coarse_mesh,
                                   coarse_kernel_weight_,
                                   coarse_affine_weights_)
-        x_coarse = x_coarse[:, :, :self.cfg.target_doc_h, :self.cfg.target_doc_w]
         
         refine_mesh = self.refine_transformer(x_coarse)
-        refine_kernel_weight_, refine_affine_weights_ = self.kornia_tps(refine_mesh,
-                                                                        im_size=(self.cfg.target_doc_w, self.cfg.target_doc_h))
+        refine_kernel_weight_, refine_affine_weights_ = self.kornia_tps(refine_mesh)
         x_refine = warp_image_tps(x_coarse, 
                                   refine_mesh,
                                   refine_kernel_weight_,
@@ -119,27 +111,20 @@ class DeWrapper(LightningModule):
         if self.cfg.debug:
             self.trainer.datamodule.data_train.__getitem__(0)
     
-    def on_train_epoch_end(self):
-        logger.info("\n " + self.cfg.paths.output_dir +  " : Training epoch " + str(self.current_epoch) + " ended.")
-    
     def step(self, batch):
-        normal_img = batch["normal_img"]
-        soft_img   = batch["soft_img"]
+        img = batch["img"]
         reference  = batch["reference"] # ground-truth
 
         # Fourier Converter
-        coarse_mesh = self.coarse_transformer(soft_img)
-        coarse_kernel_weight_, coarse_affine_weights_ = self.kornia_tps(coarse_mesh, 
-                                                                        im_size=(self.cfg.target_width, self.cfg.target_height))
-        x_coarse = warp_image_tps(normal_img, 
+        coarse_mesh = self.coarse_transformer(img)
+        coarse_kernel_weight_, coarse_affine_weights_ = self.kornia_tps(coarse_mesh)
+        x_coarse = warp_image_tps(img, 
                                   coarse_mesh,
                                   coarse_kernel_weight_,
                                   coarse_affine_weights_)
-        x_coarse = x_coarse[:, :, :self.cfg.target_doc_h, :self.cfg.target_doc_w]
         
         refine_mesh = self.refine_transformer(x_coarse)
-        refine_kernel_weight_, refine_affine_weights_ = self.kornia_tps(refine_mesh,
-                                                                        im_size=(self.cfg.target_doc_w, self.cfg.target_doc_h))
+        refine_kernel_weight_, refine_affine_weights_ = self.kornia_tps(refine_mesh)
         x_refine = warp_image_tps(x_coarse, 
                                   refine_mesh,
                                   refine_kernel_weight_,
@@ -153,8 +138,8 @@ class DeWrapper(LightningModule):
         loss_refine = self.crit_refine(x_fft_refine_.cpu(), ref_.detach().cpu())
 
         if self.cfg.loss.mutual.enable:
-            D1 = random_tps(normal_img)
-            D2 = random_tps(normal_img)
+            D1 = random_tps(img)
+            D2 = random_tps(img)
 
             d1_mesh = self.coarse_transformer(D1)
             d2_mesh = self.coarse_transformer(D2)
@@ -171,10 +156,10 @@ class DeWrapper(LightningModule):
                                        kernel_weight_2, 
                                        affine_weights_2)
 
-            loss_mutual = self.crit_mutual(wraped_D1.cpu(), D1.detach().cpu()) + \
-                          self.crit_mutual(wraped_D2.cpu(), D2.detach().cpu())
+            loss_mutual = self.crit_mutual(wraped_D1.cpu()*255.0, D1.detach().cpu()*255.0) + \
+                          self.crit_mutual(wraped_D2.cpu()*255.0, D2.detach().cpu()*255.0)
             w = self.cfg.loss.mutual.weight
-            loss_coarse += w * loss_mutual * 255.
+            loss_coarse += w * loss_mutual
         
         loss_ = loss_coarse + loss_refine
         return {
@@ -199,22 +184,20 @@ class DeWrapper(LightningModule):
             self.trainer.datamodule.data_val.__getitem__(0)
     
     def validation_step(self, batch, batch_idx):
-        out = self.forward(batch["normal_img"])
+        out = self.forward(batch["img"])
         ref_ = self.fourier_converter(batch["reference"])
 
         loss = self.crit_coarse(out["x_converted"].detach(), ref_.detach())
         self.val_loss.update(loss.item())
-        
-        # update and log metrics
-        self.log("val_loss", loss.item(), on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=False)
         
         del batch
-        return {"loss": loss}
+        return {"val_loss": loss}
     
     def on_validation_epoch_end(self):
         self.log_iter_stats()
 
-    def log_iter_stats(self): # TODO
+    def log_iter_stats(self):
         def gpu_mem_usage():
             """Computes the GPU memory usage for the current device (MB)."""
             mem_usage_bytes = torch.cuda.max_memory_allocated()

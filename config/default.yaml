@@ -21,16 +21,10 @@ fourier_converter:
     beta_test : 0.008
 
 # size of target image
-target_width : 768
-target_height: 1088
-
-# size of target inside doc
-target_doc_w: 480
-target_doc_h: 704
+target_size: [768, 1088]
 
 # grid size
-grid_width : 9
-grid_height: 9
+grid_size: [31, 31]
 
 train: True 
 
@@ -66,7 +60,7 @@ trainer:
     benchmark: True
 
     accumulate_grad_batches: 1
-    gradient_clip_val: 2.0
+    gradient_clip_val: 1.0
     precision: 32
     num_sanity_val_steps: 0
     limit_train_batches: 1.0
@@ -74,25 +68,14 @@ trainer:
     sync_batchnorm: null
     strategy: auto 
 
-log_frequency: 100
-
 loss: 
     coarse: 
         type: "ssim"
-        kwargs:
-            data_range: 255.0
-            size_average: False
     refine: 
         type: "ssim"
-        kwargs:
-            data_range: 255.0
-            size_average: False
     mutual: 
         enable: True
         type  : "ssim"
-        kwargs:
-            data_range: 255.0
-            size_average: False
         weight: 0.5 
 
 dataloader:
@@ -106,6 +89,7 @@ dataset:
     sharpness: 0.25
     blur: 0.4
     geometry: 0.25
+    color_jiter: 0.25
 
 callbacks:
     model_checkpoint:  
@@ -120,7 +104,7 @@ callbacks:
         save_weights_only: False # if True, then only the model’s weights will be saved
         every_n_train_steps: null # number of training steps between checkpoints
         train_time_interval: null # checkpoints are monitored at the specified time interval
-        every_n_epochs: 1 # number of epochs between checkpoints
+        every_n_epochs: 5 # number of epochs between checkpoints
         save_on_train_epoch_end: True # whether to run checkpointing at the end of the training epoch or the end of validation
 
     model_summary:
