@@ -158,28 +158,16 @@ class Resnet(nn.Module):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
-        y = [x]
         x = self.maxpool(x)
-        y.append(x)
-
+        
         x = self.layer1(x)
-        y.append(x)
         x = self.layer2(x)
-        y.append(x)
         x = self.layer3(x)
-        y.append(x)
         x = self.layer4(x)
-        y.append(x)
-
-        return y[-1]
+        return x
 
     def _init_weights(self, num_layers):
         url = model_urls['resnet{}'.format(num_layers)]
         pretrained_state_dict = model_zoo.load_url(url)
         logger.info('=> loading pretrained model {}'.format(url))
         self.load_state_dict(pretrained_state_dict, strict=False)
-
-
-def resnet_builder(model_name, load_pretrained=True):
-    num_layers = int(model_name[6:])
-    return Resnet(num_layers, load_pretrained=load_pretrained)

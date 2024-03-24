@@ -14,9 +14,10 @@ class STN(LightningModule):
         super().__init__()
         
         self.cfg = cfg
-        self.backbone = backbone_builder(self.cfg)
-        self.cfg.backbone.out_channel = self.backbone.channels[-1]
-        self.head = head_builder(self.cfg)
+        self.backbone = backbone_builder(self.cfg.backbone)
+
+        self.cfg.head.kwargs.in_channel = self.backbone.channels[-1]
+        self.head = head_builder(self.cfg.head)
         self.act = nn.Hardtanh()
 
         self.configure_loss()
@@ -38,7 +39,7 @@ class STN(LightningModule):
         return {"loss": loss}
  
     def configure_loss(self):
-        self.crit = Loss(self.cfg.loss.coarse)
+        self.crit = Loss(self.cfg.loss)
     
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-4, weight_decay=5e-4, amsgrad=True)

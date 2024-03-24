@@ -46,13 +46,7 @@ class DeWrapper(LightningModule):
         self.best_val_acc = 0
 
         # Models
-        self.cfg.coarse_module.grid_width = self.cfg.grid_size[0]
-        self.cfg.coarse_module.grid_height = self.cfg.grid_size[1]
         self.coarse_transformer = STN(self.cfg.coarse_module)
-
-        self.cfg.refine_module.grid_width = self.cfg.grid_size[0]
-        self.cfg.refine_module.grid_height = self.cfg.grid_size[1]
-        self.refine_transformer = STN(self.cfg.refine_module)
 
         # Fourier
         if self.cfg.train:
@@ -83,7 +77,7 @@ class DeWrapper(LightningModule):
                                   coarse_kernel_weight_,
                                   coarse_affine_weights_)
         
-        refine_mesh = self.refine_transformer(x_coarse)
+        refine_mesh = self.coarse_transformer(x_coarse)
         refine_kernel_weight_, refine_affine_weights_ = self.kornia_tps(refine_mesh)
         x_refine = warp_image_tps(x_coarse, 
                                   refine_mesh,

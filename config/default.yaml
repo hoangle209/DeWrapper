@@ -5,7 +5,8 @@ coarse_module:
             output_dim: 256
             norm_fn   : "instance"
     head:
-        type: "FDRHead"
+        type: "fdr"
+        kwargs: null
 
 refine_module:
     backbone: 
@@ -14,7 +15,8 @@ refine_module:
             output_dim: 256
             norm_fn   : "instance"
     head:
-        type: "FDRHead"
+        type: "fdr"
+        kwargs: null
 
 fourier_converter:
     beta_train: 0.06
@@ -36,7 +38,7 @@ paths:
     root_dir  : ${oc.env:PROJECT_ROOT}
     data_dir  : /content/WarpDoc
     log_dir   : ${paths.root_dir}/logs/
-    output_dir: ${paths.root_dir}/checkpoints/
+    output_dir: ${paths.root_dir}/checkpoints/de_wrapper
 
 trainer:
     default_root_dir: ${paths.output_dir}
@@ -104,7 +106,7 @@ callbacks:
         save_weights_only: False # if True, then only the model’s weights will be saved
         every_n_train_steps: null # number of training steps between checkpoints
         train_time_interval: null # checkpoints are monitored at the specified time interval
-        every_n_epochs: 5 # number of epochs between checkpoints
+        every_n_epochs: 1 # number of epochs between checkpoints
         save_on_train_epoch_end: True # whether to run checkpointing at the end of the training epoch or the end of validation
 
     model_summary:

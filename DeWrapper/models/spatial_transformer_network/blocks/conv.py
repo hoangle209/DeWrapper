@@ -28,3 +28,24 @@ class Conv(nn.Module):
     def forward_fuse(self, x):
         """Perform transposed convolution of 2D data."""
         return self.act(self.conv(x))
+
+
+def conv3x3(in_channels, out_channels, stride=1):
+    return nn.Conv2d(in_channels, out_channels, kernel_size=3,  stride=stride, padding=1)
+
+
+def dilation_conv_bn_act(in_channels, out_dim, act_fn, BatchNorm, dilation=4):
+    model = nn.Sequential(
+        nn.Conv2d(in_channels, out_dim, kernel_size=3, stride=1, padding=dilation, dilation=dilation),
+        BatchNorm(out_dim),
+        # nn.BatchNorm2d(out_dim),
+        act_fn,
+    )
+    return model
+
+
+def dilation_conv(in_channels, out_dim, stride=1, dilation=4, groups=1):
+    model = nn.Sequential(
+        nn.Conv2d(in_channels, out_dim, kernel_size=3, stride=stride, padding=dilation, dilation=dilation, groups=groups),
+    )
+    return model

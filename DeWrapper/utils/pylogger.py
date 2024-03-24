@@ -7,9 +7,9 @@ def get_pylogger(name=__name__) -> logging.Logger:
 
     logging.basicConfig(
         level="INFO",
-        format="%(message)s",
+        format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="[%m/%d %H:%M:%S]",
-        handlers=[RichHandler()]
+        # handlers=[RichHandler()]
     )
 
     logger = logging.getLogger(name)

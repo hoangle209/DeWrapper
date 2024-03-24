@@ -7,19 +7,20 @@ class FDRHead(nn.Module):
     """Fourier Document Restoration Network Head
     This head is implemented from: https://arxiv.org/abs/2203.09910
     """
-    expansion= 1
-
-    def __init__(self, cfg):
+    def __init__(self,
+                 num_mid_dilate_cv=3,
+                 num_end_dilate_cv=2,
+                 mid_dim=128, 
+                 mid_dim_2=256,
+                 en_dim=512,
+                 in_channel=None,
+                 grid_size=[9, 9]
+                       ):
         super().__init__()
 
-        self.cfg = cfg
-        mid_dim = 128
-        mid_dim_2 = 256
-        en_dim = 512
+        grid_width, grid_height = grid_size
         self.num_mid_dilate_cv = 3
         self.num_end_dilate_cv = 2
-
-        in_channel = cfg.backbone.out_channel
 
         for i in range(self.num_mid_dilate_cv):
             setattr(
@@ -40,7 +41,7 @@ class FDRHead(nn.Module):
         self.pool2 = nn.AdaptiveAvgPool2d(1)
         self.drop = nn.Dropout(p=0.0, inplace=True)
         self.linear = nn.Linear(en_dim, 
-                                cfg.grid_width * cfg.grid_height * 2)
+                                grid_width * grid_height * 2)
     
     def forward(self, x):
         B, C, H, W = x.size()

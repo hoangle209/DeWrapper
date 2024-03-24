@@ -5,6 +5,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 import glob
 import random
+from ..augmentation.letterbox import ClassifyLetterBox
 
 DEFAULT_MEAN = [0., 0., 0.]
 DEFAULT_STD  = [1., 1., 1.]
@@ -64,7 +65,7 @@ class WrapDocDataset(Dataset):
         return input
 
     def configure_aug(self):
-        resize = T.Resize((self.target_h, self.target_w))
+        resize = ClassifyLetterBox(size=(self.target_h, self.target_w))
         to_tensor_and_norm = [
             T.ToTensor(),
             T.Normalize(mean=DEFAULT_MEAN, std=DEFAULT_STD)
