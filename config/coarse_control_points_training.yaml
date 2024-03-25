@@ -6,8 +6,10 @@ grid_size: &gs [9, 9]
 
 coarse_module:
   backbone: 
-    type  : "resnet50"
-    kwargs: null
+    type  : "basic_encoder"
+    kwargs:
+      output_dim: 256
+      norm_fn: "instance"
   head:
     type: "fdr"
     kwargs: 

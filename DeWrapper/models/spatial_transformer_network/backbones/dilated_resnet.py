@@ -40,9 +40,9 @@ class ResidualBlockWithDilatedV1(nn.Module):
 
 class ResNetV2StraightV2(nn.Module):
     def __init__(self, 
-                 num_filter, 
-                 map_num, 
-                 BatchNorm, 
+                 num_filter=32, 
+                 map_num=[1, 2, 4, 8, 16], 
+                 BatchNorm="instance", 
                  block_nums=[3, 4, 6, 3], 
                  block=ResidualBlockWithDilatedV1, 
                  stride=[1, 2, 2, 2], 
@@ -61,11 +61,25 @@ class ResNetV2StraightV2(nn.Module):
         self.drop_out_4 = nn.Dropout2d(p=dropRate[3]) 	
         self.relu = nn.ReLU(inplace=True)
 
+        if BatchNorm == "instance":
+            BatchNorm = nn.InstanceNorm2d
+
+        self.resnet_head = nn.Sequential(
+            nn.Conv2d(3, num_filter * map_num[0], kernel_size=3, stride=2, padding=1),
+            BatchNorm(num_filter * map_num[0]),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(num_filter * map_num[0], num_filter * map_num[0], kernel_size=3, stride=2, padding=1),
+            BatchNorm(num_filter * map_num[0]),
+            nn.ReLU(inplace=True),
+        )
+
         self.block_nums = block_nums
         self.layer1 = self.blocklayer(block, num_filter * map_num[0], self.block_nums[0], BatchNorm, stride=self.stride[0])
         self.layer2 = self.blocklayer(block, num_filter * map_num[1], self.block_nums[1], BatchNorm, stride=self.stride[1])
         self.layer3 = self.blocklayer(block, num_filter * map_num[2], self.block_nums[2], BatchNorm, stride=self.stride[2])
         self.layer4 = self.blocklayer(block, num_filter * map_num[3], self.block_nums[3], BatchNorm, stride=self.stride[3])
+
+        self.strides = 32
 
         self._initialize_weights()
 
@@ -94,6 +108,7 @@ class ResNetV2StraightV2(nn.Module):
                 nn.init.xavier_normal_(m.weight, gain=0.2)
 
     def forward(self, x, is_skip=False):
+        x = self.resnet_head(x)
         out1 = self.layer1(x)
         out2 = self.layer2(out1)
         out3 = self.layer3(out2)

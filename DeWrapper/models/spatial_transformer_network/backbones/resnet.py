@@ -116,6 +116,8 @@ class Resnet(nn.Module):
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
 
+        self.strides = 32
+
         self.channels = [
             64, 64, 
             64 * block.expansion, 

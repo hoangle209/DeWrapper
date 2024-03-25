@@ -87,6 +87,8 @@ class BasicEncoder(nn.Module):
         self.conv2 = nn.Conv2d(192, output_dim, kernel_size=1)
         self.channels.append(output_dim)
 
+        self.strides = 8
+
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")

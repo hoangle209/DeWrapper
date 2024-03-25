@@ -65,7 +65,9 @@ class WrapDocDataset(Dataset):
         return input
 
     def configure_aug(self):
-        resize = ClassifyLetterBox(size=(self.target_h, self.target_w))
+        resize = v2.Resize((self.target_h, self.target_w))
+        leeterbox_resize = ClassifyLetterBox(size=(self.target_h, self.target_w))
+        
         to_tensor_and_norm = [
             T.ToTensor(),
             T.Normalize(mean=DEFAULT_MEAN, std=DEFAULT_STD)
@@ -85,6 +87,7 @@ class WrapDocDataset(Dataset):
         
         self.aug = {
             "resize": resize,
+            "letterbox_reisize": leeterbox_resize,
             "to_tensor_and_norm": T.Compose(to_tensor_and_norm),
             "geometry": T.Compose(geometry),
             "blur": blur,
@@ -93,7 +96,7 @@ class WrapDocDataset(Dataset):
 
     def apply_aug_(self, img, ref):
         input = {}
-        img = self.aug["resize"](img)
+        img = self.aug["letterbox_reisize"](img)
         if self.train: 
             if random.random() > (1 - self.cfg.dataset.color_jiter):
                 img = self.aug["color_jiter"](img)
