@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from lightning import LightningModule
+from omegaconf import OmegaConf
 
 from .backbones.builder import builder as backbone_builder
 from .heads.builder import builder as head_builder
@@ -15,8 +16,14 @@ class STN(LightningModule):
         
         self.cfg = cfg
         self.backbone = backbone_builder(self.cfg.backbone)
-
-        self.cfg.head.kwargs.in_channel = self.backbone.channels[-1]
+        
+        self.cfg.head = OmegaConf.merge(
+            self.cfg.head, {
+            "kwargs": {
+                "in_channel": self.backbone.channels[-1],
+                "strides"   : self.backbone.strides
+            }
+        })
         self.head = head_builder(self.cfg.head)
         self.act = nn.Hardtanh()
 

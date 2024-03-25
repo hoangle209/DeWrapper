@@ -36,9 +36,8 @@ class WrapDocDataset(Dataset):
         self.img_list = []
         for e in self.ext:
             self.img_list.extend(glob.glob(f"{datapath}/{_t}/image/**/{e}", recursive=True))
-
-        self.target_w, self.target_h = self.cfg.target_size()
-
+            
+        self.target_w, self.target_h = self.cfg.target_size
         self.configure_aug()
     
     def __len__(self):

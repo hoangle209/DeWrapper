@@ -1,5 +1,5 @@
 # size of target image
-target_size: [768, 1088]
+target_size: &im_sz [224, 224]
 
 # grid size
 grid_size: &gs [9, 9]
@@ -15,17 +15,17 @@ coarse_module:
     kwargs: 
       num_mid_dilate_cv: 5
       num_end_dilate_cv: 3
-      mid_dim: 512
-      mid_dim_2: 1280
+      mid_dim: 256
+      mid_dim_2: 512
       en_dim: 1024
       grid_size: *gs
+      im_size: *im_sz
   loss:
     type: "L2"
 
 train: True 
 ckpt_path: null
 debug: True
-
 
 
 paths: 

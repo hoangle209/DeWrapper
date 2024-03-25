@@ -9,6 +9,7 @@ from DeWrapper.models import STN
 from DeWrapper.models.utils.fourier_converter import FourierConverter
 from DeWrapper.models.utils.thin_plate_spline import KorniaTPS
 from DeWrapper.models.losses.create_loss import Loss
+from DeWrapper.datamodules.metrcis import SSIM
 
 from DeWrapper.utils import get_pylogger
 logger = get_pylogger()
@@ -117,7 +118,7 @@ class DeWrapper(LightningModule):
                                   coarse_kernel_weight_,
                                   coarse_affine_weights_)
         
-        refine_mesh = self.refine_transformer(x_coarse)
+        refine_mesh = self.coarse_transformer(x_coarse)
         refine_kernel_weight_, refine_affine_weights_ = self.kornia_tps(refine_mesh)
         x_refine = warp_image_tps(x_coarse, 
                                   refine_mesh,
@@ -181,7 +182,7 @@ class DeWrapper(LightningModule):
         out = self.forward(batch["img"])
         ref_ = self.fourier_converter(batch["reference"])
 
-        loss = self.crit_coarse(out["x_converted"].detach(), ref_.detach())
+        loss = SSIM(out["x_converted"].detach(), ref_.detach())
         self.val_loss.update(loss.item())
         self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=False)
         

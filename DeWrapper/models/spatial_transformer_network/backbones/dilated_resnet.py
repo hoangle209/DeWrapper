@@ -42,7 +42,7 @@ class ResNetV2StraightV2(nn.Module):
     def __init__(self, 
                  num_filter=32, 
                  map_num=[1, 2, 4, 8, 16], 
-                 BatchNorm="instance", 
+                 BatchNorm="batch", 
                  block_nums=[3, 4, 6, 3], 
                  block=ResidualBlockWithDilatedV1, 
                  stride=[1, 2, 2, 2], 
@@ -61,7 +61,11 @@ class ResNetV2StraightV2(nn.Module):
         self.drop_out_4 = nn.Dropout2d(p=dropRate[3]) 	
         self.relu = nn.ReLU(inplace=True)
 
-        if BatchNorm == "instance":
+        if BatchNorm == "group":
+            BatchNorm = nn.GroupNorm
+        elif BatchNorm == "batch":
+            BatchNorm = nn.BatchNorm2d
+        elif BatchNorm == "instance":
             BatchNorm = nn.InstanceNorm2d
 
         self.resnet_head = nn.Sequential(
