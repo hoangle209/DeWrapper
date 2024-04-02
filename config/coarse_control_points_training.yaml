@@ -1,8 +1,8 @@
 # size of target image
-target_size: &im_sz [224, 224]
+target_size: &im_sz [992, 992]
 
 # grid size
-grid_size: &gs [9, 9]
+grid_size: &gs [61, 61]
 
 coarse_module:
   backbone: 
