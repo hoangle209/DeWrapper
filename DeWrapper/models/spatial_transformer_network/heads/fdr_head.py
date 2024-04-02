@@ -13,10 +13,10 @@ class FDRHead(nn.Module):
                  mid_dim=128, 
                  mid_dim_2=256,
                  en_dim=512,
-                 in_channel=None,
-                 grid_size=[9, 9],
                  strides=32,
-                 im_size=(768, 1088)
+                 im_size=(768, 1088),
+                 grid_size=(9, 9),
+                 in_channel=None
                 ):
         super().__init__()
 

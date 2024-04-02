@@ -9,7 +9,8 @@ class FiducialHead(nn.Module):
                  BatchNorm="batch", 
                  strides=32,
                  im_size=(768, 1088),
-                 grid_size=(9, 9)):
+                 grid_size=(9, 9),
+                 in_channel=None):
         
         act_fn = nn.ReLU(inplace=True)
         map_num = [1, 2, 4, 8, 16]
@@ -24,27 +25,27 @@ class FiducialHead(nn.Module):
             BatchNorm = nn.InstanceNorm2d
 
         self.bridge_1 = nn.Sequential(
-            dilation_conv_bn_act(self.num_filter * map_num[map_num_i], self.num_filter * map_num[map_num_i],
+            dilation_conv_bn_act(in_channel, self.num_filter * map_num[map_num_i],
                                  act_fn, BatchNorm, dilation=1),
         )
         self.bridge_2 = nn.Sequential(
-            dilation_conv_bn_act(self.num_filter * map_num[map_num_i], self.num_filter * map_num[map_num_i],
-                                act_fn, BatchNorm, dilation=2),
+            dilation_conv_bn_act(in_channel, self.num_filter * map_num[map_num_i],
+                                 act_fn, BatchNorm, dilation=2),
         )
         self.bridge_3 = nn.Sequential(
-            dilation_conv_bn_act(self.num_filter * map_num[map_num_i], self.num_filter * map_num[map_num_i],
-                                act_fn, BatchNorm, dilation=5),
+            dilation_conv_bn_act(in_channel, self.num_filter * map_num[map_num_i],
+                                 act_fn, BatchNorm, dilation=5),
         )
         self.bridge_4 = nn.Sequential(
-            dilation_conv_bn_act(self.num_filter * map_num[map_num_i], self.num_filter * map_num[map_num_i],
-                                act_fn, BatchNorm, dilation=8),
+            dilation_conv_bn_act(in_channel, self.num_filter * map_num[map_num_i],
+                                 act_fn, BatchNorm, dilation=8),
             dilation_conv_bn_act(self.num_filter * map_num[map_num_i], self.num_filter * map_num[map_num_i],
                                 act_fn, BatchNorm, dilation=3),
             dilation_conv_bn_act(self.num_filter * map_num[map_num_i], self.num_filter * map_num[map_num_i],
                                 act_fn, BatchNorm, dilation=2),
         )
         self.bridge_5 = nn.Sequential(
-            dilation_conv_bn_act(self.num_filter * map_num[map_num_i], self.num_filter * map_num[map_num_i],
+            dilation_conv_bn_act(in_channel, self.num_filter * map_num[map_num_i],
                                 act_fn, BatchNorm, dilation=12),
             dilation_conv_bn_act(self.num_filter * map_num[map_num_i], self.num_filter * map_num[map_num_i],
                                 act_fn, BatchNorm, dilation=7),
@@ -52,7 +53,7 @@ class FiducialHead(nn.Module):
                                 act_fn, BatchNorm, dilation=4),
         )
         self.bridge_6 = nn.Sequential(
-            dilation_conv_bn_act(self.num_filter * map_num[map_num_i], self.num_filter * map_num[map_num_i],
+            dilation_conv_bn_act(in_channel, self.num_filter * map_num[map_num_i],
                                 act_fn, BatchNorm, dilation=18),
             dilation_conv_bn_act(self.num_filter * map_num[map_num_i], self.num_filter * map_num[map_num_i],
                                 act_fn, BatchNorm, dilation=12),
