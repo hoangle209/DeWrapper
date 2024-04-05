@@ -5,13 +5,14 @@ from ..blocks.conv import dilation_conv_bn_act
 
 class FiducialHead(nn.Module):
     def __init__(self, 
-                 num_filter, 
+                 num_filter=32, 
                  BatchNorm="batch", 
-                 strides=32,
                  im_size=(768, 1088),
                  grid_size=(9, 9),
+                 strides=32,
                  in_channel=None):
         
+        super().__init__()
         act_fn = nn.ReLU(inplace=True)
         map_num = [1, 2, 4, 8, 16]
         map_num_i = 3
@@ -62,7 +63,14 @@ class FiducialHead(nn.Module):
         )
 
         self.bridge_concate = nn.Sequential(
-            nn.Conv2d(self.num_filter * map_num[map_num_i] * 6, self.num_filter * map_num[2], kernel_size=1, stride=1, padding=0),
+            nn.Conv2d(
+                self.num_filter * map_num[map_num_i] * 6, 
+                self.num_filter * map_num[2], 
+                kernel_size=1, 
+                stride=1, 
+                padding=0,
+                bias=False
+            ),
             BatchNorm(self.num_filter * map_num[2]),
             act_fn,
         )

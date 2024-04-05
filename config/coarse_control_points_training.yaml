@@ -2,22 +2,18 @@
 target_size: &im_sz [992, 992]
 
 # grid size
-grid_size: &gs [61, 61]
+grid_size: &gs [31, 31]
 
 coarse_module:
   backbone: 
-    type  : "basic_encoder"
+    type  : "dilated_resnet"
     kwargs:
-      output_dim: 256
-      norm_fn: "instance"
+      BatchNorm: "batch"
   head:
-    type: "fdr"
+    type: "fiducial"
     kwargs: 
-      num_mid_dilate_cv: 5
-      num_end_dilate_cv: 3
-      mid_dim: 256
-      mid_dim_2: 512
-      en_dim: 1024
+      num_filter: 32
+      BatchNorm: "batch"
       grid_size: *gs
       im_size: *im_sz
   loss:
@@ -27,44 +23,46 @@ train: True
 ckpt_path: null
 debug: True
 
-
 paths: 
-    root_dir  : ${oc.env:PROJECT_ROOT}
-    data_dir  : /content/WarpDoc
-    log_dir   : ${paths.root_dir}/logs/
-    output_dir: ${paths.root_dir}/checkpoints/STN
+  root_dir  : ${oc.env:PROJECT_ROOT}
+  data_dir  : /home/hoang/Downloads/data/fiducial102
+  log_dir   : ${paths.root_dir}/logs/
+  output_dir: ${paths.root_dir}/checkpoints/STN
 
 trainer:
-    default_root_dir: ${paths.output_dir}
+  default_root_dir: ${paths.output_dir}
 
-    min_epochs: 1 # prevents early stopping
-    max_epochs: 100
+  min_epochs: 1 # prevents early stopping
+  max_epochs: 50
 
-    accelerator: gpu
-    devices: 1
-    num_nodes: 1
+  accelerator: gpu
+  devices: 1
+  num_nodes: 1
 
-    # mixed precision for extra speed-up
-    # precision: 16
+  # mixed precision for extra speed-up
+  # precision: 16
 
-    # perform a validation loop every N training epochs
-    check_val_every_n_epoch: 1
+  # perform a validation loop every N training epochs
+  check_val_every_n_epoch: 1
 
-    # set True to to ensure deterministic results
-    # makes training slower but gives more reproducibility than just setting seeds
-    deterministic: False
-    benchmark: True
+  # set True to to ensure deterministic results
+  # makes training slower but gives more reproducibility than just setting seeds
+  deterministic: False
+  benchmark: True
 
-    accumulate_grad_batches: 1
-    gradient_clip_val: 1.0
-    precision: 32
-    num_sanity_val_steps: 0
-    limit_train_batches: 1.0
-    limit_val_batches: 1.0
-    sync_batchnorm: null
-    strategy: auto 
+  accumulate_grad_batches: 1
+  gradient_clip_val: 1.0
+  precision: 32
+  num_sanity_val_steps: 0
+  limit_train_batches: 1.0
+  limit_val_batches: 1.0
+  sync_batchnorm: True
+  strategy: ddp 
 
 dataloader:
-    batch: 32
-    num_workers: 2
-    pin_memory: True
+  batch: 32
+  num_workers: 2
+  pin_memory: True
+
+dataset:
+  transform_types: ["visual", "noise", "color"]

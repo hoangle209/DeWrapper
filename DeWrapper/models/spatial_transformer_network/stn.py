@@ -31,6 +31,7 @@ class STN(LightningModule):
     
     def forward(self, x):
         x = self.act(self.head(self.backbone(x)))
+        x = x.view(x.size(0), -1, 2)
         return x
 
     def train_step(self, batch, batch_idx):
@@ -49,7 +50,7 @@ class STN(LightningModule):
         self.crit = Loss(self.cfg.loss)
     
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-4, weight_decay=5e-4, amsgrad=True)
+        optimizer = torch.optim.Adam(self.parameters(), lr=2e-4, betas=(0.9, 0.999))
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode="min", factor=0.5, patience=5, verbose=True
         )
